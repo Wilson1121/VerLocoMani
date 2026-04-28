@@ -10,6 +10,9 @@
 **/*.pyc
 **/*.pb
 
+# codex
+.codex
+
 # IDE
 **/.idea/
 **/.vscode/
