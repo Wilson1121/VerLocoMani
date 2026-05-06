@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import MISSING
 from typing import TYPE_CHECKING
 
 import torch
 
+import isaaclab.utils.math as math_utils
+from isaaclab.assets import Articulation
 from isaaclab.managers import CommandTerm, CommandTermCfg
 from isaaclab.utils import configclass
 
@@ -90,6 +93,180 @@ class UniformThresholdVelocityCommandCfg(mdp.UniformVelocityCommandCfg):
     """Configuration for the uniform threshold velocity command generator."""
 
     class_type: type = UniformThresholdVelocityCommand
+
+
+class BasePoseCommand(CommandTerm):
+    """Command term that samples torso roll, pitch, and height targets without trajectory caching."""
+
+    cfg: BasePoseCommandCfg
+    """Configuration for the base pose command."""
+
+    def __init__(self, cfg: BasePoseCommandCfg, env: ManagerBasedEnv):
+        """Initialize the command term."""
+        super().__init__(cfg, env)
+
+        self.robot: Articulation = env.scene[cfg.asset_name]
+        if cfg.torso_body_name not in self.robot.body_names:
+            raise ValueError(
+                f"Body name '{cfg.torso_body_name}' not found in robot body names: {self.robot.body_names}"
+            )
+        self.torso_body_id = self.robot.body_names.index(cfg.torso_body_name)
+
+        self.torso_roll_pitch_height_command = torch.zeros(self.num_envs, 3, device=self.device)
+        self.torso_projected_gravity_goal = torch.zeros(self.num_envs, 3, device=self.device)
+        self._gravity_vec = self.robot.data.GRAVITY_VEC_W.clone()
+        self._x_axis = torch.tensor([1.0, 0.0, 0.0], device=self.device)
+        self._y_axis = torch.tensor([0.0, 1.0, 0.0], device=self.device)
+
+        self.metrics["torso_roll_pitch_error"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["torso_height_error"] = torch.zeros(self.num_envs, device=self.device)
+
+    def __str__(self) -> str:
+        return f"BasePoseCommand:\n\tCommand dimension: {tuple(self.command.shape[1:])}\n"
+
+    @property
+    def command(self) -> torch.Tensor:
+        """Current torso roll, pitch, and height commands. Shape is (num_envs, 3)."""
+        return self.torso_roll_pitch_height_command
+
+    def _update_metrics(self):
+        """Update torso command tracking metrics."""
+        self.metrics["torso_roll_pitch_error"] = torch.norm(
+            self.torso_projected_gravity_goal[:, :2] - self.robot.data.projected_gravity_b[:, :2],
+            dim=1,
+        )
+        self.metrics["torso_height_error"] = torch.abs(
+            self.torso_roll_pitch_height_command[:, 2] - self.robot.data.body_pos_w[:, self.torso_body_id, 2]
+        )
+
+    def _resample_command(self, env_ids: Sequence[int]):
+        """Sample roll, pitch, and height targets directly from uniform ranges."""
+        num_envs = len(env_ids)
+        self.torso_roll_pitch_height_command[env_ids, 0] = math_utils.sample_uniform(
+            *self.cfg.ranges.roll, (num_envs,), device=self.device
+        )
+        self.torso_roll_pitch_height_command[env_ids, 1] = math_utils.sample_uniform(
+            *self.cfg.ranges.pitch, (num_envs,), device=self.device
+        )
+        self.torso_roll_pitch_height_command[env_ids, 2] = math_utils.sample_uniform(
+            *self.cfg.ranges.height, (num_envs,), device=self.device
+        )
+
+        quat_roll = math_utils.quat_from_angle_axis(self.torso_roll_pitch_height_command[env_ids, 0], self._x_axis)
+        quat_pitch = math_utils.quat_from_angle_axis(self.torso_roll_pitch_height_command[env_ids, 1], self._y_axis)
+        desired_base_quat = math_utils.quat_mul(quat_roll, quat_pitch)
+        self.torso_projected_gravity_goal[env_ids] = math_utils.quat_rotate_inverse(
+            desired_base_quat, self._gravity_vec[env_ids]
+        )
+
+    def _update_command(self):
+        """Keep the sampled command constant until the next resampling event."""
+        pass
+
+
+class ArmJointTrajectoryCommand(CommandTerm):
+    """Command term that interpolates arm joints from start to goal, then holds the goal."""
+
+    cfg: ArmJointTrajectoryCommandCfg
+    """Configuration for the arm joint trajectory command."""
+
+    def __init__(self, cfg: ArmJointTrajectoryCommandCfg, env: ManagerBasedEnv):
+        """Initialize the command term."""
+        super().__init__(cfg, env)
+
+        self.robot: Articulation = env.scene[cfg.asset_name]
+        self.arm_joint_ids = self.robot.find_joints(self.cfg.joint_names, preserve_order=True)[0]
+
+        self.arm_joint_start = torch.zeros(self.num_envs, len(self.arm_joint_ids), device=self.device)
+        self.arm_joint_goal = torch.zeros(self.num_envs, len(self.arm_joint_ids), device=self.device)
+        self.arm_joint_sub_goal = torch.zeros(self.num_envs, len(self.arm_joint_ids), device=self.device)
+
+        # Use the parsed URDF soft joint limits as the uniform sampling bounds.
+        self.lower_bound = self.robot.data.soft_joint_pos_limits[:, self.arm_joint_ids, 0]
+        self.upper_bound = self.robot.data.soft_joint_pos_limits[:, self.arm_joint_ids, 1]
+
+        self.step_dt = env.step_dt
+        self.timer = torch.zeros(self.num_envs, device=self.device)
+        self.traj_timesteps = self._sample_segment_timesteps(self.cfg.trajectory_time)
+        self.hold_timesteps = self._sample_segment_timesteps(self.cfg.hold_time)
+
+        self.metrics["arm_joint_error"] = torch.zeros(self.num_envs, device=self.device)
+
+    def __str__(self) -> str:
+        msg = "ArmJointTrajectoryCommand:\n"
+        msg += f"\tCommand dimension: {tuple(self.command.shape[1:])}\n"
+        return msg
+
+    @property
+    def command(self) -> torch.Tensor:
+        """Current interpolated joint target. Shape is (num_envs, num_joints)."""
+        return self.arm_joint_sub_goal
+
+    def _sample_segment_timesteps(self, time_range: tuple[float, float], num_envs: int | None = None) -> torch.Tensor:
+        """Sample per-env segment durations and convert them to discrete timesteps."""
+        batch = self.num_envs if num_envs is None else num_envs
+        timesteps = (
+            math_utils.sample_uniform(time_range[0], time_range[1], (batch,), device=self.device) / self.step_dt
+        ).int()
+        return torch.clamp(timesteps, min=1)
+
+    def _update_metrics(self):
+        """Update the joint tracking error against the current interpolated goal."""
+        self.metrics["arm_joint_error"] = torch.norm(
+            self.robot.data.joint_pos[:, self.arm_joint_ids] - self.arm_joint_sub_goal,
+            dim=1,
+        )
+
+    def _resample_command(self, env_ids: Sequence[int]):
+        """Resample a new start-goal segment for the selected environments."""
+        if len(env_ids) == 0:
+            return
+
+        self.arm_joint_start[env_ids] = torch.clamp(
+            self.robot.data.joint_pos[env_ids][:, self.arm_joint_ids],
+            self.lower_bound[env_ids],
+            self.upper_bound[env_ids],
+        )
+        self.arm_joint_sub_goal[env_ids] = self.arm_joint_start[env_ids]
+        self.arm_joint_goal[env_ids] = math_utils.sample_uniform(
+            self.lower_bound[env_ids],
+            self.upper_bound[env_ids],
+            (len(env_ids), len(self.arm_joint_ids)),
+            self.device,
+        )
+
+        self.traj_timesteps[env_ids] = self._sample_segment_timesteps(self.cfg.trajectory_time, len(env_ids))
+        self.hold_timesteps[env_ids] = self._sample_segment_timesteps(self.cfg.hold_time, len(env_ids))
+        self.timer[env_ids] = 0.0
+
+    def _update_command(self):
+        """Advance the current interpolation segment and resample completed environments."""
+        self.timer += 1.0
+
+        reaching = self.timer <= self.traj_timesteps
+        holding = torch.logical_and(
+            self.traj_timesteps < self.timer,
+            self.timer <= self.traj_timesteps + self.hold_timesteps,
+        )
+        reset = self.timer > self.traj_timesteps + self.hold_timesteps
+
+        reaching_ids = reaching.nonzero(as_tuple=False).squeeze(-1)
+        holding_ids = holding.nonzero(as_tuple=False).squeeze(-1)
+        reset_ids = reset.nonzero(as_tuple=False).squeeze(-1)
+
+        if len(reaching_ids) > 0:
+            alpha = (self.timer[reaching_ids] / self.traj_timesteps[reaching_ids]).reshape(-1, 1)
+            self.arm_joint_sub_goal[reaching_ids] = torch.lerp(
+                self.arm_joint_start[reaching_ids],
+                self.arm_joint_goal[reaching_ids],
+                alpha,
+            )
+
+        if len(holding_ids) > 0:
+            self.arm_joint_sub_goal[holding_ids] = self.arm_joint_goal[holding_ids].clone()
+
+        if len(reset_ids) > 0:
+            self._resample(reset_ids)
 
 
 class DiscreteCommandController(CommandTerm):
@@ -183,3 +360,45 @@ class DiscreteCommandControllerCfg(CommandTermCfg):
     List of available discrete commands, where each element is an integer.
     Example: [10, 20, 30, 40, 50]
     """
+
+
+@configclass
+class BasePoseCommandCfg(CommandTermCfg):
+    """Configuration for the torso base pose command."""
+
+    class_type: type = BasePoseCommand
+
+    asset_name: str = MISSING
+    """Name of the asset in the environment for which the commands are generated."""
+
+    torso_body_name: str = MISSING
+    """Name of the torso body to associate with the command."""
+
+    @configclass
+    class Ranges:
+        """Uniform distribution ranges for torso pose commands."""
+
+        roll: tuple[float, float] = MISSING
+        pitch: tuple[float, float] = MISSING
+        height: tuple[float, float] = MISSING
+
+    ranges: Ranges = MISSING
+
+
+@configclass
+class ArmJointTrajectoryCommandCfg(CommandTermCfg):
+    """Configuration for the interpolated arm joint trajectory command."""
+
+    class_type: type = ArmJointTrajectoryCommand
+
+    asset_name: str = MISSING
+    """Name of the asset in the environment for which the commands are generated."""
+
+    trajectory_time: tuple[float, float] = MISSING
+    """Interpolation duration in seconds."""
+
+    hold_time: tuple[float, float] = MISSING
+    """Goal hold duration in seconds."""
+
+    joint_names: list[str] = MISSING
+    """Ordered joint names to command."""

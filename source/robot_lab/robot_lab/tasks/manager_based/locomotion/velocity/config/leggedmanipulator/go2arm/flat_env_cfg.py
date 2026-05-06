@@ -1,0 +1,27 @@
+# Copyright (c) 2024-2026 Ziqi Fan
+# SPDX-License-Identifier: Apache-2.0
+
+from isaaclab.utils import configclass
+
+from .rough_env_cfg import UnitreeGo2ArmRoughEnvCfg
+
+
+@configclass
+class UnitreeGo2ArmFlatEnvCfg(UnitreeGo2ArmRoughEnvCfg):
+    def __post_init__(self):
+        # post init of parent
+        super().__post_init__()
+
+        # override rewards
+
+        # no height scan
+
+        # no terrain curriculum
+
+        # change terrain to flat
+        self.scene.terrain.terrain_type = "plane"
+        self.scene.terrain.terrain_generator = None
+
+        # If the weight of rewards is 0, set rewards to None
+        if self.__class__.__name__ == "UnitreeGo2ArmFlatEnvCfg":
+            self.disable_zero_weight_rewards()
