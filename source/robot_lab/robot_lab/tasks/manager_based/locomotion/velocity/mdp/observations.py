@@ -9,6 +9,7 @@ import torch
 
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.sensors import ContactSensor
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
@@ -33,3 +34,23 @@ def phase(env: ManagerBasedRLEnv, cycle_time: float) -> torch.Tensor:
     phase = env.episode_length_buf[:, None] * env.step_dt / cycle_time
     phase_tensor = torch.cat([torch.sin(2 * torch.pi * phase), torch.cos(2 * torch.pi * phase)], dim=-1)
     return phase_tensor
+
+
+def feet_contact_state(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    threshold: float = 1.0,
+) -> torch.Tensor:
+    """Binary contact state for the queried feet bodies."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    net_forces = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]
+    return (torch.norm(net_forces, dim=-1) > threshold).float()
+
+
+def feet_air_time(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Current air time for the queried feet bodies."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    return contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]

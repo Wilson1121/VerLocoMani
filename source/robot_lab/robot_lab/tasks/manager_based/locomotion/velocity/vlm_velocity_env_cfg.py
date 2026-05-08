@@ -27,6 +27,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import robot_lab.tasks.manager_based.locomotion.velocity.mdp as mdp
+from robot_lab.tasks.manager_based.locomotion.velocity.mdp import observations as mdp_obs
 
 ##
 # Pre-defined configs
@@ -144,6 +145,13 @@ class CommandsCfg:
             "joint6",
         ],
     )
+    feet_swing_height = mdp.DesiredFeetSwingHeightCommandCfg(
+        resampling_time_range=(10.0, 10.0),
+        max_height=0.08,
+        gait_frequency=2.0,
+        phase_offsets=(0.0, 0.5, 0.5, 0.0),
+        clip_to_positive=True,
+    )
 
 
 @configclass
@@ -191,54 +199,125 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
+        # Projected gravity, 3 Dim.
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        # Base linear velocity, 3 Dim.
         base_lin_vel = ObsTerm(
             func=mdp.base_lin_vel,
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        # Base angular velocity, 3 Dim.
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel,
             noise=Unoise(n_min=-0.1, n_max=0.1),
             clip=(-100.0, 100.0),
             scale=1.0,
         )
-        base_ang_vel = ObsTerm(
-            func=mdp.base_ang_vel,
+        # Joint position relative to default, 18 Dim.
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        "FL_hip_joint",
+                        "FL_thigh_joint",
+                        "FL_calf_joint",
+                        "FR_hip_joint",
+                        "FR_thigh_joint",
+                        "FR_calf_joint",
+                        "RL_hip_joint",
+                        "RL_thigh_joint",
+                        "RL_calf_joint",
+                        "RR_hip_joint",
+                        "RR_thigh_joint",
+                        "RR_calf_joint",
+                        "joint1",
+                        "joint2",
+                        "joint3",
+                        "joint4",
+                        "joint5",
+                        "joint6",
+                    ],
+                    preserve_order=True,
+                )
+            },
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        # Joint velocity relative observation, 18 Dim.
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        "FL_hip_joint",
+                        "FL_thigh_joint",
+                        "FL_calf_joint",
+                        "FR_hip_joint",
+                        "FR_thigh_joint",
+                        "FR_calf_joint",
+                        "RL_hip_joint",
+                        "RL_thigh_joint",
+                        "RL_calf_joint",
+                        "RR_hip_joint",
+                        "RR_thigh_joint",
+                        "RR_calf_joint",
+                        "joint1",
+                        "joint2",
+                        "joint3",
+                        "joint4",
+                        "joint5",
+                        "joint6",
+                    ],
+                    preserve_order=True,
+                )
+            },
             noise=Unoise(n_min=-0.2, n_max=0.2),
             clip=(-100.0, 100.0),
             scale=1.0,
         )
-        projected_gravity = ObsTerm(
-            func=mdp.projected_gravity,
-            noise=Unoise(n_min=-0.05, n_max=0.05),
-            clip=(-100.0, 100.0),
-            scale=1.0,
-        )
+        # Base velocity command, 3 Dim.
         velocity_commands = ObsTerm(
             func=mdp.generated_commands,
             params={"command_name": "base_velocity"},
             clip=(-100.0, 100.0),
             scale=1.0,
         )
-        joint_pos = ObsTerm(
-            func=mdp.joint_pos_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
-            noise=Unoise(n_min=-0.01, n_max=0.01),
+        # Torso base pose command [roll, pitch, height], 3 Dim.
+        base_pose_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "base_pose"},
             clip=(-100.0, 100.0),
             scale=1.0,
         )
-        joint_vel = ObsTerm(
-            func=mdp.joint_vel_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
-            noise=Unoise(n_min=-1.5, n_max=1.5),
+        # Arm joint trajectory command, 6 Dim.
+        arm_joint_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "arm_joint_trajectory"},
             clip=(-100.0, 100.0),
             scale=1.0,
         )
+        # Desired feet swing height command for [FL, FR, RL, RR], 4 Dim.
+        feet_swing_height_command = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "feet_swing_height"},
+            clip=(0.0, 1.0),
+            scale=1.0,
+        )
+        # Last policy action for leg joints, 12 Dim.
         actions = ObsTerm(
             func=mdp.last_action,
             clip=(-100.0, 100.0),
-            scale=1.0,
-        )
-        height_scan = ObsTerm(
-            func=mdp.height_scan,
-            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-            noise=Unoise(n_min=-0.1, n_max=0.1),
-            clip=(-1.0, 1.0),
             scale=1.0,
         )
 
@@ -251,50 +330,154 @@ class ObservationsCfg:
         """Observations for critic group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(
-            func=mdp.base_lin_vel,
-            clip=(-100.0, 100.0),
-            scale=1.0,
-        )
-        base_ang_vel = ObsTerm(
-            func=mdp.base_ang_vel,
-            clip=(-100.0, 100.0),
-            scale=1.0,
-        )
+        # Projected gravity, 3 Dim.
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             clip=(-100.0, 100.0),
             scale=1.0,
         )
+        # Base linear velocity, 3 Dim.
+        base_lin_vel = ObsTerm(
+            func=mdp.base_lin_vel,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        # Base angular velocity, 3 Dim.
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel,
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        # Joint position relative to default, 18 Dim.
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        "FL_hip_joint",
+                        "FL_thigh_joint",
+                        "FL_calf_joint",
+                        "FR_hip_joint",
+                        "FR_thigh_joint",
+                        "FR_calf_joint",
+                        "RL_hip_joint",
+                        "RL_thigh_joint",
+                        "RL_calf_joint",
+                        "RR_hip_joint",
+                        "RR_thigh_joint",
+                        "RR_calf_joint",
+                        "joint1",
+                        "joint2",
+                        "joint3",
+                        "joint4",
+                        "joint5",
+                        "joint6",
+                    ],
+                    preserve_order=True,
+                )
+            },
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        # Joint velocity relative observation, 18 Dim.
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        "FL_hip_joint",
+                        "FL_thigh_joint",
+                        "FL_calf_joint",
+                        "FR_hip_joint",
+                        "FR_thigh_joint",
+                        "FR_calf_joint",
+                        "RL_hip_joint",
+                        "RL_thigh_joint",
+                        "RL_calf_joint",
+                        "RR_hip_joint",
+                        "RR_thigh_joint",
+                        "RR_calf_joint",
+                        "joint1",
+                        "joint2",
+                        "joint3",
+                        "joint4",
+                        "joint5",
+                        "joint6",
+                    ],
+                    preserve_order=True,
+                )
+            },
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        # Base velocity command, 3 Dim.
         velocity_commands = ObsTerm(
             func=mdp.generated_commands,
             params={"command_name": "base_velocity"},
             clip=(-100.0, 100.0),
             scale=1.0,
         )
-        joint_pos = ObsTerm(
-            func=mdp.joint_pos_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+        # Torso base pose command [roll, pitch, height], 3 Dim.
+        base_pose_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "base_pose"},
             clip=(-100.0, 100.0),
             scale=1.0,
         )
-        joint_vel = ObsTerm(
-            func=mdp.joint_vel_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+        # Arm joint trajectory command, 6 Dim.
+        arm_joint_commands = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "arm_joint_trajectory"},
             clip=(-100.0, 100.0),
             scale=1.0,
         )
+        # Desired feet swing height command for [FL, FR, RL, RR], 4 Dim.
+        feet_swing_height_command = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "feet_swing_height"},
+            clip=(0.0, 1.0),
+            scale=1.0,
+        )
+        # Last policy action for leg joints, 12 Dim.
         actions = ObsTerm(
             func=mdp.last_action,
             clip=(-100.0, 100.0),
             scale=1.0,
         )
-        height_scan = ObsTerm(
-            func=mdp.height_scan,
-            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-            clip=(-1.0, 1.0),
+        # Feet binary contact state for [FL, FR, RL, RR], 4 Dim.
+        feet_contact_state = ObsTerm(
+            func=mdp.feet_contact_state,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces",
+                    body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                ),
+                "threshold": 1.0,
+            },
+            clip=(0.0, 1.0),
             scale=1.0,
         )
+        # Current feet air time for [FL, FR, RL, RR], 4 Dim.
+        feet_air_time = ObsTerm(
+            func=mdp_obs.feet_air_time,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces",
+                    body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                )
+            },
+            clip=(0.0, 1.0),
+            scale=1.0,
+        )
+        # # Terrain height scan around the base, 160 Dim.
+        # height_scan = ObsTerm(
+        #     func=mdp.height_scan,
+        #     params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+        #     clip=(-1.0, 1.0),
+        #     scale=1.0,
+        # )
         # joint_effort = ObsTerm(
         #     func=mdp.joint_effort,
         #     clip=(-100, 100),

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import MISSING
 from typing import TYPE_CHECKING
@@ -19,7 +20,7 @@ import robot_lab.tasks.manager_based.locomotion.velocity.mdp as mdp
 from .utils import is_robot_on_terrain
 
 if TYPE_CHECKING:
-    from isaaclab.envs import ManagerBasedEnv
+    from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
 
 
 class UniformThresholdVelocityCommand(mdp.UniformVelocityCommand):
@@ -402,3 +403,80 @@ class ArmJointTrajectoryCommandCfg(CommandTermCfg):
 
     joint_names: list[str] = MISSING
     """Ordered joint names to command."""
+
+
+class DesiredFeetSwingHeightCommand(CommandTerm):
+    """Desired feet swing height command for [FL, FR, RL, RR]."""
+
+    cfg: DesiredFeetSwingHeightCommandCfg
+    """Configuration for the feet swing height command."""
+
+    def __init__(self, cfg: DesiredFeetSwingHeightCommandCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        if len(cfg.phase_offsets) != 4:
+            raise ValueError("phase_offsets must have 4 elements in [FL, FR, RL, RR] order.")
+
+        self._dt = float(env.cfg.decimation * env.cfg.sim.dt)
+        self._phase = torch.zeros(self.num_envs, device=self.device)
+        self._max_height = torch.zeros(self.num_envs, device=self.device)
+        self._command = torch.zeros(self.num_envs, 4, device=self.device)
+        self._phase_offsets = torch.tensor(cfg.phase_offsets, device=self.device).view(1, 4)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> dict[str, float]:
+        extras = super().reset(env_ids)
+        if env_ids is None:
+            self._phase = torch.rand(self.num_envs, device=self.device)
+            return extras
+        if isinstance(env_ids, torch.Tensor):
+            env_ids = env_ids.tolist()
+        self._phase[env_ids] = torch.rand(len(env_ids), device=self.device)
+        return extras
+
+    @property
+    def command(self) -> torch.Tensor:
+        """Current desired swing heights for [FL, FR, RL, RR]."""
+        return self._command
+
+    def _update_metrics(self):
+        pass
+
+    def _resample_command(self, env_ids: Sequence[int]):
+        if self.cfg.height_range is None:
+            self._max_height[env_ids] = float(self.cfg.max_height)
+            return
+        self._max_height[env_ids] = math_utils.sample_uniform(
+            self.cfg.height_range[0],
+            self.cfg.height_range[1],
+            (len(env_ids),),
+            device=self.device,
+        )
+
+    def _update_command(self):
+        self._phase = torch.remainder(self._phase + self._dt * float(self.cfg.gait_frequency), 1.0)
+        phase = torch.remainder(self._phase.unsqueeze(-1) + self._phase_offsets, 1.0)
+        heights = self._max_height.unsqueeze(-1) * torch.sin(2.0 * math.pi * phase)
+        if self.cfg.clip_to_positive:
+            heights = torch.clamp(heights, min=0.0)
+        self._command = heights
+
+
+@configclass
+class DesiredFeetSwingHeightCommandCfg(CommandTermCfg):
+    """Configuration for desired feet swing height command."""
+
+    class_type: type = DesiredFeetSwingHeightCommand
+
+    max_height: float = 0.12
+    """Fixed swing height in meters when ``height_range`` is not provided."""
+
+    height_range: tuple[float, float] | None = None
+    """Optional uniform sampling range for the maximum swing height."""
+
+    gait_frequency: float = 1.5
+    """Gait cycle frequency in Hz."""
+
+    phase_offsets: tuple[float, float, float, float] = (0.0, 0.5, 0.5, 0.0)
+    """Phase offsets for [FL, FR, RL, RR]."""
+
+    clip_to_positive: bool = True
+    """Whether to clamp swing heights to non-negative values."""
