@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import torch
@@ -46,6 +47,33 @@ def track_ang_vel_z_exp(
     reward = torch.exp(-ang_vel_error / std**2)
     reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
     return reward
+
+
+def track_base_orientation_exp(
+    env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward tracking of base roll/pitch target using a squared-error exponential kernel."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    command_term = env.command_manager.get_term(command_name)
+
+    orientation_error = torch.sum(
+        torch.square(command_term.torso_projected_gravity_goal[:, :2] - asset.data.projected_gravity_b[:, :2]),
+        dim=1,
+    )
+    return torch.exp(-orientation_error / std**2)
+
+
+def track_base_height_exp(
+    env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward tracking of base height target using a squared-error exponential kernel."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    command_term = env.command_manager.get_term(command_name)
+
+    height_error = torch.square(
+        command_term.torso_roll_pitch_height_command[:, 2] - asset.data.body_pos_w[:, command_term.torso_body_id, 2]
+    )
+    return torch.exp(-height_error / std**2)
 
 
 def track_lin_vel_xy_yaw_frame_exp(
@@ -360,6 +388,17 @@ def feet_air_time(
     return reward
 
 
+def feet_air_time_on_contact(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Feet air time reward for the contact-schedule objective."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    first_contact = contact_sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
+    last_air_time = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
+    return torch.sum(last_air_time * first_contact, dim=1)
+
+
 def feet_air_time_positive_biped(env, command_name: str, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """Reward long steps taken by the feet for bipeds.
 
@@ -397,6 +436,68 @@ def feet_air_time_variance_penalty(env: ManagerBasedRLEnv, sensor_cfg: SceneEnti
     return reward
 
 
+class FeetAirTimeVarianceReward(ManagerTermBase):
+    """Variance of recent feet air/contact durations for the contact-schedule objective."""
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.history_len = int(cfg.params.get("history_len", 3))
+        if self.history_len < 1:
+            raise ValueError("history_len must be >= 1.")
+
+        sensor_cfg: SceneEntityCfg = cfg.params["sensor_cfg"]
+        if isinstance(sensor_cfg.body_ids, slice) or not sensor_cfg.body_ids:
+            raise ValueError("FeetAirTimeVarianceReward requires sensor_cfg.body_names to resolve feet bodies.")
+
+        self.contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+        self.body_ids = sensor_cfg.body_ids
+        num_feet = len(self.body_ids)
+        self.air_time_history = torch.zeros(self.history_len, env.num_envs, num_feet, device=env.device)
+        self.contact_time_history = torch.zeros_like(self.air_time_history)
+        self.air_history_index = torch.zeros(env.num_envs, num_feet, dtype=torch.long, device=env.device)
+        self.contact_history_index = torch.zeros_like(self.air_history_index)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        last_air_time = self.contact_sensor.data.last_air_time[:, self.body_ids]
+        last_contact_time = self.contact_sensor.data.last_contact_time[:, self.body_ids]
+        if env_ids is None:
+            self.air_time_history[:] = last_air_time
+            self.contact_time_history[:] = last_contact_time
+            self.air_history_index.zero_()
+            self.contact_history_index.zero_()
+        else:
+            self.air_time_history[:, env_ids] = last_air_time[env_ids]
+            self.contact_time_history[:, env_ids] = last_contact_time[env_ids]
+            self.air_history_index[env_ids] = 0
+            self.contact_history_index[env_ids] = 0
+
+    def __call__(self, env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, history_len: int = 3) -> torch.Tensor:
+        if int(history_len) != self.history_len:
+            raise ValueError("history_len must match the value used at initialization.")
+
+        first_contact = self.contact_sensor.compute_first_contact(env.step_dt)[:, self.body_ids]
+        last_air_time = self.contact_sensor.data.last_air_time[:, self.body_ids]
+        first_air = self.contact_sensor.compute_first_air(env.step_dt)[:, self.body_ids]
+        last_contact_time = self.contact_sensor.data.last_contact_time[:, self.body_ids]
+
+        for foot_id in range(len(self.body_ids)):
+            contact_env_ids = torch.where(first_contact[:, foot_id])[0]
+            if contact_env_ids.numel() > 0:
+                idx = self.air_history_index[contact_env_ids, foot_id]
+                self.air_time_history[idx, contact_env_ids, foot_id] = last_air_time[contact_env_ids, foot_id]
+                self.air_history_index[contact_env_ids, foot_id] = (idx + 1) % self.history_len
+
+            air_env_ids = torch.where(first_air[:, foot_id])[0]
+            if air_env_ids.numel() > 0:
+                idx = self.contact_history_index[air_env_ids, foot_id]
+                self.contact_time_history[idx, air_env_ids, foot_id] = last_contact_time[air_env_ids, foot_id]
+                self.contact_history_index[air_env_ids, foot_id] = (idx + 1) % self.history_len
+
+        air_variance = torch.var(self.air_time_history, dim=0, unbiased=False)
+        contact_variance = torch.var(self.contact_time_history, dim=0, unbiased=False)
+        return torch.sum(air_variance + contact_variance, dim=1)
+
+
 def feet_contact(
     env: ManagerBasedRLEnv, command_name: str, expect_contact_num: int, sensor_cfg: SceneEntityCfg
 ) -> torch.Tensor:
@@ -423,6 +524,60 @@ def feet_contact_without_cmd(env: ManagerBasedRLEnv, command_name: str, sensor_c
     reward *= torch.linalg.norm(env.command_manager.get_command(command_name), dim=1) < 0.1
     reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
     return reward
+
+
+def feet_contact_schedule(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg,
+    torso_body_cfg: SceneEntityCfg,
+    force_variance: float,
+    height_variance: float,
+    vel_variance: float,
+    contact_force_threshold: float = 1.0,
+    height_contact_epsilon: float = 1.0e-6,
+) -> torch.Tensor:
+    """Feet contact schedule reward.
+
+    The desired contact state is inferred from the desired feet swing height command:
+    near-zero desired height means stance, positive desired height means swing.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    desired_height = env.command_manager.get_command(command_name)
+    if isinstance(sensor_cfg.body_ids, slice) or isinstance(asset_cfg.body_ids, slice):
+        raise ValueError("feet_contact_schedule requires explicit feet body_names for sensor_cfg and asset_cfg.")
+    if len(sensor_cfg.body_ids) != len(asset_cfg.body_ids):
+        raise ValueError("feet_contact_schedule expects sensor_cfg and asset_cfg to resolve the same number of feet.")
+    if isinstance(torso_body_cfg.body_ids, slice) or len(torso_body_cfg.body_ids) != 1:
+        raise ValueError("feet_contact_schedule expects torso_body_cfg to resolve exactly one torso body.")
+    if desired_height.shape[-1] != len(asset_cfg.body_ids):
+        raise ValueError("feet_contact_schedule expects command dimension to match the number of feet.")
+
+    desired_contact = (desired_height <= height_contact_epsilon).float()
+
+    net_forces = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]
+    force_mag = torch.linalg.norm(net_forces, dim=-1)
+    force_z = torch.abs(net_forces[..., 2])
+    in_contact = (force_z > contact_force_threshold).float()
+
+    foot_pos_w = asset.data.body_pos_w[:, asset_cfg.body_ids, :]
+    foot_height = foot_pos_w[..., 2]
+    height_error = desired_height - foot_height
+    swing_reward = (1.0 - desired_contact) * torch.exp(-(force_mag**2) / force_variance) * torch.exp(
+        -(height_error**2) / height_variance
+    )
+
+    torso_quat_w = asset.data.body_quat_w[:, torso_body_cfg.body_ids[0]]
+    task_quat_w = yaw_quat(torso_quat_w).unsqueeze(1)
+    foot_vel_w = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :]
+    foot_vel_t = math_utils.quat_apply_inverse(task_quat_w.expand(-1, foot_vel_w.shape[1], -1), foot_vel_w)
+    foot_vel_xy = torch.linalg.norm(foot_vel_t[..., :2], dim=-1)
+    stance_reward = desired_contact * in_contact * torch.exp(-(foot_vel_xy**2) / vel_variance)
+
+    return torch.sum(swing_reward + stance_reward, dim=1)
 
 
 def feet_stumble(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:

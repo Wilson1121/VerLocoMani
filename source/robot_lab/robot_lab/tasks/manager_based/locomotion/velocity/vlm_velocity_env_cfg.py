@@ -497,390 +497,158 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
-    # startup
-    randomize_rigid_body_material = EventTerm(
-        func=mdp.randomize_rigid_body_material,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.3, 1.0),
-            "dynamic_friction_range": (0.3, 0.8),
-            "restitution_range": (0.0, 0.5),
-            "num_buckets": 64,
-        },
-    )
-
-    randomize_rigid_body_mass_base = EventTerm(
-        func=mdp.randomize_rigid_body_mass,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=""),
-            "mass_distribution_params": (-1.0, 3.0),
-            "operation": "add",
-            "recompute_inertia": True,
-        },
-    )
-
-    randomize_rigid_body_mass_others = EventTerm(
-        func=mdp.randomize_rigid_body_mass,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "mass_distribution_params": (0.7, 1.3),
-            "operation": "scale",
-            "recompute_inertia": True,
-        },
-    )
-
-    # Skip: inertia updated via mass randomization by setting recompute_inertia=True
-    # randomize_rigid_body_inertia = EventTerm(
-    #     func=mdp.randomize_rigid_body_inertia,
-    #     mode="startup",
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-    #         "inertia_distribution_params": (0.5, 1.5),
-    #         "operation": "scale",
-    #     },
-    # )
-
-    randomize_com_positions = EventTerm(
-        func=mdp.randomize_rigid_body_com,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
-        },
-    )
-
-    # reset
-    randomize_apply_external_force_torque = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=""),
-            "force_range": (-10.0, 10.0),
-            "torque_range": (-10.0, 10.0),
-        },
-    )
-
-    randomize_reset_joints = EventTerm(
-        func=mdp.reset_joints_by_scale,
-        # func=mdp.reset_joints_by_offset,
-        mode="reset",
-        params={
-            "position_range": (1.0, 1.0),
-            "velocity_range": (0.0, 0.0),
-        },
-    )
-
-    randomize_actuator_gains = EventTerm(
-        func=mdp.randomize_actuator_gains,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-            "stiffness_distribution_params": (0.5, 2.0),
-            "damping_distribution_params": (0.5, 2.0),
-            "operation": "scale",
-            "distribution": "uniform",
-        },
-    )
-
-    randomize_reset_base = EventTerm(
-        func=mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            "velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "z": (-0.5, 0.5),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-0.5, 0.5),
-            },
-        },
-    )
-
-    # interval
-    randomize_push_robot = EventTerm(
-        func=mdp.push_by_setting_velocity,
-        mode="interval",
-        interval_range_s=(10.0, 15.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
-    )
 
 
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # General
-    is_terminated = RewTerm(func=mdp.is_terminated, weight=0.0)
-
-    # Root penalties
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=0.0)
-    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=0.0)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
-    base_height_l2 = RewTerm(
-        func=mdp.base_height_l2,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=""),
-            "sensor_cfg": SceneEntityCfg("height_scanner_base"),
-            "target_height": 0.0,
-        },
-    )
-    body_lin_acc_l2 = RewTerm(
-        func=mdp.body_lin_acc_l2,
-        weight=0.0,
-        params={"asset_cfg": SceneEntityCfg("robot", body_names="")},
-    )
-
-    # Joint penalties
-    joint_torques_l2 = RewTerm(
-        func=mdp.joint_torques_l2, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
-    )
-    joint_vel_l2 = RewTerm(
-        func=mdp.joint_vel_l2, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
-    )
-    joint_acc_l2 = RewTerm(
-        func=mdp.joint_acc_l2, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
-    )
-
-    def create_joint_deviation_l1_rewterm(self, attr_name, weight, joint_names_pattern):
-        rew_term = RewTerm(
-            func=mdp.joint_deviation_l1,
-            weight=weight,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=joint_names_pattern)},
-        )
-        setattr(self, attr_name, rew_term)
-
-    joint_pos_limits = RewTerm(
-        func=mdp.joint_pos_limits, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
-    )
-    joint_vel_limits = RewTerm(
-        func=mdp.joint_vel_limits,
-        weight=0.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*"), "soft_ratio": 1.0},
-    )
-    joint_power = RewTerm(
-        func=mdp.joint_power,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-        },
-    )
-
-    stand_still = RewTerm(
-        func=mdp.stand_still,
-        weight=0.0,
-        params={
-            "command_name": "base_velocity",
-            "command_threshold": 0.1,
-            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-        },
-    )
-
-    joint_pos_penalty = RewTerm(
-        func=mdp.joint_pos_penalty,
-        weight=0.0,
-        params={
-            "command_name": "base_velocity",
-            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-            "stand_still_scale": 5.0,
-            "velocity_threshold": 0.5,
-            "command_threshold": 0.1,
-        },
-    )
-
-    wheel_vel_penalty = RewTerm(
-        func=mdp.wheel_vel_penalty,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=""),
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=""),
-            "command_name": "base_velocity",
-            "velocity_threshold": 0.5,
-            "command_threshold": 0.1,
-        },
-    )
-
-    joint_mirror = RewTerm(
-        func=mdp.joint_mirror,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "mirror_joints": [["FR.*", "RL.*"], ["FL.*", "RR.*"]],
-        },
-    )
-
-    action_mirror = RewTerm(
-        func=mdp.action_mirror,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "mirror_joints": [["FR.*", "RL.*"], ["FL.*", "RR.*"]],
-        },
-    )
-
-    action_sync = RewTerm(
-        func=mdp.action_sync,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "joint_groups": [
-                ["FR_hip_joint", "FL_hip_joint", "RL_hip_joint", "RR_hip_joint"],
-                ["FR_thigh_joint", "FL_thigh_joint", "RL_thigh_joint", "RR_thigh_joint"],
-                ["FR_calf_joint", "FL_calf_joint", "RL_calf_joint", "RR_calf_joint"],
-            ],
-        },
-    )
-
-    # Action penalties
-    applied_torque_limits = RewTerm(
-        func=mdp.applied_torque_limits,
-        weight=0.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")},
-    )
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=0.0)
-    # smoothness_1 = RewTerm(func=mdp.smoothness_1, weight=0.0)  # Same as action_rate_l2
-    # smoothness_2 = RewTerm(func=mdp.smoothness_2, weight=0.0)  # Unvaliable now
-
-    # Contact sensor
-    undesired_contacts = RewTerm(
-        func=mdp.undesired_contacts,
-        weight=0.0,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=""),
-            "threshold": 1.0,
-        },
-    )
-    contact_forces = RewTerm(
-        func=mdp.contact_forces,
-        weight=0.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=""), "threshold": 100.0},
-    )
-
     # Velocity-tracking rewards
     track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=0.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        func=mdp.track_lin_vel_xy_exp,
+        weight=0.0,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     track_ang_vel_z_exp = RewTerm(
-        func=mdp.track_ang_vel_z_exp, weight=0.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        func=mdp.track_ang_vel_z_exp,
+        weight=0.0,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
+    )
+    track_base_orientation_exp = RewTerm(
+        func=mdp.track_base_orientation_exp,
+        weight=0.0,
+        params={"command_name": "base_pose", "std": 0.15},
+    )
+    track_base_height_exp = RewTerm(
+        func=mdp.track_base_height_exp,
+        weight=0.0,
+        params={"command_name": "base_pose", "std": 0.05},
     )
 
-    # Others
-    feet_air_time = RewTerm(
-        func=mdp.feet_air_time,
+    # 关节与动作正则项。
+    joint_torques_l2 = RewTerm(
+        func=mdp.joint_torques_l2,
         weight=0.0,
         params={
-            "command_name": "base_velocity",
-            "threshold": 0.5,
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=""),
+            # 腿部策略控制关节的力矩 L2 惩罚，不包含由 command 驱动的机械臂关节。
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    "FL_hip_joint",
+                    "FL_thigh_joint",
+                    "FL_calf_joint",
+                    "FR_hip_joint",
+                    "FR_thigh_joint",
+                    "FR_calf_joint",
+                    "RL_hip_joint",
+                    "RL_thigh_joint",
+                    "RL_calf_joint",
+                    "RR_hip_joint",
+                    "RR_thigh_joint",
+                    "RR_calf_joint",
+                ],
+                preserve_order=True,
+            ),
         },
     )
-
-    feet_air_time_variance = RewTerm(
-        func=mdp.feet_air_time_variance_penalty,
-        weight=0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="")},
-    )
-
-    feet_gait = RewTerm(
-        func=mdp.GaitReward,
+    joint_vel_l2 = RewTerm(
+        func=mdp.joint_vel_l2,
         weight=0.0,
         params={
-            "std": math.sqrt(0.5),
-            "command_name": "base_velocity",
-            "max_err": 0.2,
-            "velocity_threshold": 0.5,
-            "command_threshold": 0.1,
-            "synced_feet_pair_names": (("", ""), ("", "")),
-            "asset_cfg": SceneEntityCfg("robot"),
-            "sensor_cfg": SceneEntityCfg("contact_forces"),
+            # 腿部策略控制关节的速度 L2 惩罚。
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    "FL_hip_joint",
+                    "FL_thigh_joint",
+                    "FL_calf_joint",
+                    "FR_hip_joint",
+                    "FR_thigh_joint",
+                    "FR_calf_joint",
+                    "RL_hip_joint",
+                    "RL_thigh_joint",
+                    "RL_calf_joint",
+                    "RR_hip_joint",
+                    "RR_thigh_joint",
+                    "RR_calf_joint",
+                ],
+                preserve_order=True,
+            ),
         },
     )
+    action_rate_l2 = RewTerm(
+        func=mdp.action_rate_l2,
+        weight=0.0,
+    )
 
+    # 接触时序奖励。
     feet_contact = RewTerm(
-        func=mdp.feet_contact,
+        func=mdp.feet_contact_schedule,
         weight=0.0,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=""),
-            "command_name": "base_velocity",
-            "expect_contact_num": 2,
+            # 期望摆动高度命令。接近 0 表示支撑相，正高度表示摆动相。
+            "command_name": "feet_swing_height",
+            # 接触传感器中的足端顺序，必须与 feet_swing_height 命令顺序一致：[FL, FR, RL, RR]。
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+            # 机器人足端刚体，用于读取足端高度和速度；顺序必须与 sensor_cfg 一致。
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+            # 躯干刚体，用于构造 yaw 对齐坐标系来计算足端水平速度。
+            "torso_body_cfg": SceneEntityCfg("robot", body_names="base"),
+            # 摆动脚接触力项 Phi(F_f, 1.0) 的高斯分母。
+            "force_variance": 1.0,
+            # 期望足高与当前足高误差项 Phi(h_hat_z - h_z, 0.05) 的高斯分母。
+            "height_variance": 0.05,
+            # 支撑脚水平速度项 Phi(v_fxy, 0.01) 的高斯分母。
+            "vel_variance": 0.01,
+            # 判断支撑脚实际接触的竖直接触力阈值。
+            "contact_force_threshold": 1.0,
+            # 期望足高小于等于该值时，视为支撑相命令。
+            "height_contact_epsilon": 1.0e-4,
+        },
+    )
+    feet_air_time_variance = RewTerm(
+        func=mdp.FeetAirTimeVarianceReward,
+        weight=0.0,
+        params={
+            # 需要统计最近腾空/接触持续时间的足端；保留顺序以保持一致性。
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+            # 用于计算 Var(t_air) + Var(t_contact) 的最近模式持续时间数量，即 t-2..t。
+            "history_len": 3,
+        },
+    )
+    feet_air_time = RewTerm(
+        func=mdp.feet_air_time_on_contact,
+        weight=0.0,
+        params={
+            # 用于检测首次触地并读取该次触地前腾空持续时间的足端。
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
         },
     )
 
-    feet_contact_without_cmd = RewTerm(
-        func=mdp.feet_contact_without_cmd,
-        weight=0.0,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=""),
-            "command_name": "base_velocity",
-        },
+    is_alive = RewTerm(
+        func=mdp.is_alive,
+        weight=0.0
     )
-
-    feet_stumble = RewTerm(
-        func=mdp.feet_stumble,
-        weight=0.0,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=""),
-        },
+    is_terminated = RewTerm(
+        func=mdp.is_terminated,
+        weight=0.0
     )
-
-    feet_slide = RewTerm(
-        func=mdp.feet_slide,
-        weight=0.0,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=""),
-            "asset_cfg": SceneEntityCfg("robot", body_names=""),
-        },
-    )
-
-    feet_height = RewTerm(
-        func=mdp.feet_height,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=""),
-            "tanh_mult": 2.0,
-            "target_height": 0.05,
-            "command_name": "base_velocity",
-        },
-    )
-
-    feet_height_body = RewTerm(
-        func=mdp.feet_height_body,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=""),
-            "tanh_mult": 2.0,
-            "target_height": -0.3,
-            "command_name": "base_velocity",
-        },
-    )
-
-    feet_distance_y_exp = RewTerm(
-        func=mdp.feet_distance_y_exp,
-        weight=0.0,
-        params={
-            "std": math.sqrt(0.25),
-            "asset_cfg": SceneEntityCfg("robot", body_names=""),
-            "stance_width": float,
-        },
-    )
-
-    # feet_distance_xy_exp = RewTerm(
-    #     func=mdp.feet_distance_xy_exp,
-    #     weight=0.0,
-    #     params={
-    #         "std": math.sqrt(0.25),
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=""),
-    #         "stance_length": float,
-    #         "stance_width": float,
-    #     },
-    # )
-
-    upward = RewTerm(func=mdp.upward, weight=0.0)
 
 
 @configclass
@@ -889,41 +657,29 @@ class TerminationsCfg:
 
     # MDP terminations
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # command_resample
-    terrain_out_of_bounds = DoneTerm(
-        func=mdp.terrain_out_of_bounds,
-        params={"asset_cfg": SceneEntityCfg("robot"), "distance_buffer": 3.0},
-        time_out=True,
+
+    # 基座翻倒终止：base 倾角超过阈值即终止。
+    bad_orientation = DoneTerm(
+        func=mdp.bad_orientation,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names="base"), "limit_angle": 1.0},
     )
 
-    # Contact sensor
+    # 只允许足端接触地面：除四个足端外，任意刚体接触力超过阈值即终止。
     illegal_contact = DoneTerm(
         func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=""), "threshold": 1.0},
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=[r"^(?!.*(?:FL_foot|FR_foot|RL_foot|RR_foot)$).+"],
+            ),
+            "threshold": 1.0,
+        },
     )
 
 
 @configclass
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
-
-    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
-
-    command_levels_lin_vel = CurrTerm(
-        func=mdp.command_levels_lin_vel,
-        params={
-            "reward_term_name": "track_lin_vel_xy_exp",
-            "range_multiplier": (0.1, 1.0),
-        },
-    )
-
-    command_levels_ang_vel = CurrTerm(
-        func=mdp.command_levels_ang_vel,
-        params={
-            "reward_term_name": "track_ang_vel_z_exp",
-            "range_multiplier": (0.1, 1.0),
-        },
-    )
 
 
 ##
