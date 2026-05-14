@@ -76,6 +76,48 @@ def track_base_height_exp(
     return torch.exp(-height_error / std**2)
 
 
+def base_lin_vel_z_exp(
+    env: ManagerBasedRLEnv, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward small base z-axis linear velocity using an exponential kernel."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    vel_error = torch.square(asset.data.root_lin_vel_b[:, 2])
+    return torch.exp(-vel_error / std**2)
+
+
+def base_ang_vel_xy_exp(
+    env: ManagerBasedRLEnv, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward small base roll/pitch angular velocity using an exponential kernel."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    ang_vel_error = torch.sum(torch.square(asset.data.root_ang_vel_b[:, :2]), dim=1)
+    return torch.exp(-ang_vel_error / std**2)
+
+
+def joint_torques_exp(
+    env: ManagerBasedRLEnv, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward small joint torques using an exponential kernel."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    torque_error = torch.sum(torch.square(asset.data.applied_torque[:, asset_cfg.joint_ids]), dim=1)
+    return torch.exp(-torque_error / std**2)
+
+
+def joint_vel_exp(
+    env: ManagerBasedRLEnv, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward small joint velocities using an exponential kernel."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_vel_error = torch.sum(torch.square(asset.data.joint_vel[:, asset_cfg.joint_ids]), dim=1)
+    return torch.exp(-joint_vel_error / std**2)
+
+
+def action_rate_exp(env: ManagerBasedRLEnv, std: float) -> torch.Tensor:
+    """Reward smooth actions using an exponential kernel on action-rate error."""
+    action_rate_error = torch.sum(torch.square(env.action_manager.action - env.action_manager.prev_action), dim=1)
+    return torch.exp(-action_rate_error / std**2)
+
+
 def track_lin_vel_xy_yaw_frame_exp(
     env, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:

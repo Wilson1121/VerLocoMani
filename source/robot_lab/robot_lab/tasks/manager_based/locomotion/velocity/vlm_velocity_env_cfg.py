@@ -56,7 +56,7 @@ class MySceneCfg(InteractiveSceneCfg):
             restitution_combine_mode="multiply",
             static_friction=1.0,
             dynamic_friction=1.0,
-            restitution=1.0,
+            restitution=0.0,
         ),
         visual_material=sim_utils.MdlFileCfg(
             mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
@@ -133,8 +133,9 @@ class CommandsCfg:
     arm_joint_trajectory = mdp.ArmJointTrajectoryCommandCfg(
         asset_name="robot",
         resampling_time_range=(1.0e6, 1.0e6),
-        trajectory_time=(1.0, 3.0),
-        hold_time=(0.5, 2.0),
+        trajectory_time=(6.0, 8.0),
+        hold_time=(1.0, 2.0),
+        fixed_default=True,
         debug_vis=False,
         joint_names=[
             "joint1",
@@ -183,7 +184,7 @@ class ActionsCfg:
             "joint6",
         ],
         arm_command_name="arm_joint_trajectory",
-        scale=0.5,
+        scale=0.4,
         use_default_offset=True,
         clip=None,
         preserve_order=True,
@@ -497,6 +498,26 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
+    # reset
+    randomize_reset_base_position = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            # reset_root_state_uniform samples offsets from the default root pose.
+            # Go2Arm default root z is 0.4, so this gives absolute base height U(0.2, 1.3).
+            "pose_range": {
+                "x": (-0.5, 0.5),
+                "y": (-0.5, 0.5),
+                "z": (-0.0, 0.0),
+                "roll": (-0.0, 0.0),
+                "pitch": (-0.0, 0.0),
+                "yaw": (-3.14, 3.14),
+            },
+            "velocity_range": {},
+        },
+    )
+
 
 
 @configclass
@@ -517,20 +538,39 @@ class RewardsCfg:
     track_base_orientation_exp = RewTerm(
         func=mdp.track_base_orientation_exp,
         weight=0.0,
-        params={"command_name": "base_pose", "std": 0.15},
+        params={"command_name": "base_pose", "std": math.sqrt(0.15)},
     )
     track_base_height_exp = RewTerm(
         func=mdp.track_base_height_exp,
         weight=0.0,
-        params={"command_name": "base_pose", "std": 0.05},
+        params={"command_name": "base_pose", "std": math.sqrt(0.05)},
+    )
+    base_lin_vel_z_exp = RewTerm(
+        func=mdp.base_lin_vel_z_exp,
+        weight=0.0,
+        params={
+            # 抑制 base 在机体系 z 方向的线速度；std**2 是指数核分母。
+            "std": math.sqrt(0.2),
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+        },
+    )
+    base_ang_vel_xy_exp = RewTerm(
+        func=mdp.base_ang_vel_xy_exp,
+        weight=0.0,
+        params={
+            # 抑制 base 的 roll/pitch 角速度；std**2 是指数核分母。
+            "std": math.sqrt(0.2),
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+        },
     )
 
     # 关节与动作正则项。
-    joint_torques_l2 = RewTerm(
-        func=mdp.joint_torques_l2,
+    joint_torques_exp = RewTerm(
+        func=mdp.joint_torques_exp,
         weight=0.0,
         params={
-            # 腿部策略控制关节的力矩 L2 惩罚，不包含由 command 驱动的机械臂关节。
+            # 腿部策略控制关节的力矩 exp 正则项，不包含由 command 驱动的机械臂关节。
+            "std": math.sqrt(1.0),
             "asset_cfg": SceneEntityCfg(
                 "robot",
                 joint_names=[
@@ -551,11 +591,12 @@ class RewardsCfg:
             ),
         },
     )
-    joint_vel_l2 = RewTerm(
-        func=mdp.joint_vel_l2,
+    joint_vel_exp = RewTerm(
+        func=mdp.joint_vel_exp,
         weight=0.0,
         params={
-            # 腿部策略控制关节的速度 L2 惩罚。
+            # 腿部策略控制关节的速度 exp 正则项。
+            "std": math.sqrt(1.0),
             "asset_cfg": SceneEntityCfg(
                 "robot",
                 joint_names=[
@@ -576,9 +617,10 @@ class RewardsCfg:
             ),
         },
     )
-    action_rate_l2 = RewTerm(
-        func=mdp.action_rate_l2,
+    action_rate_exp = RewTerm(
+        func=mdp.action_rate_exp,
         weight=0.0,
+        params={"std": math.sqrt(1.0)},
     )
 
     # 接触时序奖励。

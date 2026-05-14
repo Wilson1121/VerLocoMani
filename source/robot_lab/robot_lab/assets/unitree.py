@@ -52,8 +52,8 @@ UNITREE_Go2Arm_CFG = ArticulationCfg(
             # otherwise reset randomization can clamp them at 0 and the arm gets stuck early in training.
             # Keep the arm reasonably tucked to reduce early falls / illegal_contact terminations.
             "joint1": 0.0,
-            "joint2": 0.8,
-            "joint3": -0.8,
+            "joint2": 0.2,
+            "joint3": -0.2,
             "joint4": 0.0,
             "joint5": 0.0,
             "joint6": 0.0,

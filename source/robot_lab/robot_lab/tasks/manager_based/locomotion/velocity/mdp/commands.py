@@ -48,7 +48,7 @@ class UniformThresholdVelocityCommand(mdp.UniformVelocityCommand):
         """Resample velocity commands with threshold."""
         super()._resample_command(env_ids)
         # set small commands to zero
-        self.vel_command_b[env_ids, :2] *= (torch.norm(self.vel_command_b[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
+        self.vel_command_b[env_ids, :2] *= (torch.norm(self.vel_command_b[env_ids, :2], dim=1) > 0.05).unsqueeze(1)
 
     def _update_command(self):
         """Update commands and apply terrain-aware restrictions in real-time.
@@ -156,7 +156,7 @@ class BasePoseCommand(CommandTerm):
         quat_roll = math_utils.quat_from_angle_axis(self.torso_roll_pitch_height_command[env_ids, 0], self._x_axis)
         quat_pitch = math_utils.quat_from_angle_axis(self.torso_roll_pitch_height_command[env_ids, 1], self._y_axis)
         desired_base_quat = math_utils.quat_mul(quat_roll, quat_pitch)
-        self.torso_projected_gravity_goal[env_ids] = math_utils.quat_rotate_inverse(
+        self.torso_projected_gravity_goal[env_ids] = math_utils.quat_apply_inverse(
             desired_base_quat, self._gravity_vec[env_ids]
         )
 
@@ -185,6 +185,11 @@ class ArmJointTrajectoryCommand(CommandTerm):
         # Use the parsed URDF soft joint limits as the uniform sampling bounds.
         self.lower_bound = self.robot.data.soft_joint_pos_limits[:, self.arm_joint_ids, 0]
         self.upper_bound = self.robot.data.soft_joint_pos_limits[:, self.arm_joint_ids, 1]
+        if self.cfg.fixed_default:
+            default_joint_pos = self.robot.data.default_joint_pos[:, self.arm_joint_ids]
+            self.arm_joint_start[:] = default_joint_pos
+            self.arm_joint_sub_goal[:] = default_joint_pos
+            self.arm_joint_goal[:] = default_joint_pos
 
         self.step_dt = env.step_dt
         self.timer = torch.zeros(self.num_envs, device=self.device)
@@ -223,6 +228,14 @@ class ArmJointTrajectoryCommand(CommandTerm):
         if len(env_ids) == 0:
             return
 
+        if self.cfg.fixed_default:
+            default_joint_pos = self.robot.data.default_joint_pos[:, self.arm_joint_ids]
+            self.arm_joint_start[env_ids] = default_joint_pos[env_ids]
+            self.arm_joint_sub_goal[env_ids] = default_joint_pos[env_ids]
+            self.arm_joint_goal[env_ids] = default_joint_pos[env_ids]
+            self.timer[env_ids] = 0.0
+            return
+
         self.arm_joint_start[env_ids] = torch.clamp(
             self.robot.data.joint_pos[env_ids][:, self.arm_joint_ids],
             self.lower_bound[env_ids],
@@ -242,6 +255,13 @@ class ArmJointTrajectoryCommand(CommandTerm):
 
     def _update_command(self):
         """Advance the current interpolation segment and resample completed environments."""
+        if self.cfg.fixed_default:
+            default_joint_pos = self.robot.data.default_joint_pos[:, self.arm_joint_ids]
+            self.arm_joint_start[:] = default_joint_pos
+            self.arm_joint_sub_goal[:] = default_joint_pos
+            self.arm_joint_goal[:] = default_joint_pos
+            return
+
         self.timer += 1.0
 
         reaching = self.timer <= self.traj_timesteps
@@ -403,6 +423,9 @@ class ArmJointTrajectoryCommandCfg(CommandTermCfg):
 
     joint_names: list[str] = MISSING
     """Ordered joint names to command."""
+
+    fixed_default: bool = False
+    """Whether to keep the commanded arm joints at their default positions."""
 
 
 class DesiredFeetSwingHeightCommand(CommandTerm):
