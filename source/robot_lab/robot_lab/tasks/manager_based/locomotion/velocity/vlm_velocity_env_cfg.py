@@ -135,7 +135,7 @@ class CommandsCfg:
         resampling_time_range=(1.0e6, 1.0e6),
         trajectory_time=(6.0, 8.0),
         hold_time=(1.0, 2.0),
-        fixed_default=True,
+        fixed_default=False,
         debug_vis=False,
         joint_names=[
             "joint1",
