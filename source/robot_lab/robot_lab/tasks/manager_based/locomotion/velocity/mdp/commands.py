@@ -178,13 +178,42 @@ class ArmJointTrajectoryCommand(CommandTerm):
         self.robot: Articulation = env.scene[cfg.asset_name]
         self.arm_joint_ids = self.robot.find_joints(self.cfg.joint_names, preserve_order=True)[0]
 
+        print("[ArmJointTrajectoryCommand debug] all joint names:", self.robot.joint_names)
+        print("[ArmJointTrajectoryCommand debug] requested arm joint names:", self.cfg.joint_names)
+        print("[ArmJointTrajectoryCommand debug] resolved arm joint ids:", self.arm_joint_ids)
+        print(
+            "[ArmJointTrajectoryCommand debug] resolved arm joint names:",
+            [self.robot.joint_names[joint_id] for joint_id in self.arm_joint_ids],
+        )
+        print(
+            "[ArmJointTrajectoryCommand debug] root_physx_view dof limits:",
+            self.robot.root_physx_view.get_dof_limits()[0, self.arm_joint_ids].detach().cpu(),
+        )
+        print(
+            "[ArmJointTrajectoryCommand debug] default_joint_pos_limits:",
+            self.robot.data.default_joint_pos_limits[0, self.arm_joint_ids].detach().cpu(),
+        )
+        print(
+            "[ArmJointTrajectoryCommand debug] joint_pos_limits:",
+            self.robot.data.joint_pos_limits[0, self.arm_joint_ids].detach().cpu(),
+        )
+        print(
+            "[ArmJointTrajectoryCommand debug] soft_joint_pos_limits:",
+            self.robot.data.soft_joint_pos_limits[0, self.arm_joint_ids].detach().cpu(),
+        )
+
         self.arm_joint_start = torch.zeros(self.num_envs, len(self.arm_joint_ids), device=self.device)
         self.arm_joint_goal = torch.zeros(self.num_envs, len(self.arm_joint_ids), device=self.device)
         self.arm_joint_sub_goal = torch.zeros(self.num_envs, len(self.arm_joint_ids), device=self.device)
 
-        # Use the parsed URDF soft joint limits as the uniform sampling bounds.
-        self.lower_bound = self.robot.data.soft_joint_pos_limits[:, self.arm_joint_ids, 0]
-        self.upper_bound = self.robot.data.soft_joint_pos_limits[:, self.arm_joint_ids, 1]
+        soft_lower_bound = self.robot.data.soft_joint_pos_limits[:, self.arm_joint_ids, 0]
+        soft_upper_bound = self.robot.data.soft_joint_pos_limits[:, self.arm_joint_ids, 1]
+        if not 0.0 <= self.cfg.init_range <= 1.0:
+            raise ValueError(f"init_range must be in [0, 1], got {self.cfg.init_range}.")
+        center = 0.5 * (soft_lower_bound + soft_upper_bound)
+        half_range = 0.5 * (soft_upper_bound - soft_lower_bound)
+        self.lower_bound = center - self.cfg.init_range * half_range
+        self.upper_bound = center + self.cfg.init_range * half_range
         if self.cfg.fixed_default:
             default_joint_pos = self.robot.data.default_joint_pos[:, self.arm_joint_ids]
             self.arm_joint_start[:] = default_joint_pos
@@ -218,10 +247,11 @@ class ArmJointTrajectoryCommand(CommandTerm):
 
     def _update_metrics(self):
         """Update the joint tracking error against the current interpolated goal."""
-        self.metrics["arm_joint_error"] = torch.norm(
-            self.robot.data.joint_pos[:, self.arm_joint_ids] - self.arm_joint_sub_goal,
-            dim=1,
-        )
+        joint_error = self.robot.data.joint_pos[:, self.arm_joint_ids] - self.arm_joint_sub_goal
+        joint_abs_error = torch.abs(joint_error)
+        self.metrics["arm_joint_error"] = torch.norm(joint_error, dim=1)
+        for joint_idx, joint_name in enumerate(self.cfg.joint_names):
+            self.metrics[f"{joint_name}_error"] = joint_abs_error[:, joint_idx].clone()
 
     def _resample_command(self, env_ids: Sequence[int]):
         """Resample a new start-goal segment for the selected environments."""
@@ -236,10 +266,11 @@ class ArmJointTrajectoryCommand(CommandTerm):
             self.timer[env_ids] = 0.0
             return
 
+        soft_joint_pos_limits = self.robot.data.soft_joint_pos_limits[env_ids][:, self.arm_joint_ids]
         self.arm_joint_start[env_ids] = torch.clamp(
             self.robot.data.joint_pos[env_ids][:, self.arm_joint_ids],
-            self.lower_bound[env_ids],
-            self.upper_bound[env_ids],
+            soft_joint_pos_limits[..., 0],
+            soft_joint_pos_limits[..., 1],
         )
         self.arm_joint_sub_goal[env_ids] = self.arm_joint_start[env_ids]
         self.arm_joint_goal[env_ids] = math_utils.sample_uniform(
@@ -276,7 +307,8 @@ class ArmJointTrajectoryCommand(CommandTerm):
         reset_ids = reset.nonzero(as_tuple=False).squeeze(-1)
 
         if len(reaching_ids) > 0:
-            alpha = (self.timer[reaching_ids] / self.traj_timesteps[reaching_ids]).reshape(-1, 1)
+            s = (self.timer[reaching_ids] / self.traj_timesteps[reaching_ids]).clamp(0.0, 1.0)
+            alpha = (10.0 * s**3 - 15.0 * s**4 + 6.0 * s**5).reshape(-1, 1)
             self.arm_joint_sub_goal[reaching_ids] = torch.lerp(
                 self.arm_joint_start[reaching_ids],
                 self.arm_joint_goal[reaching_ids],
@@ -426,6 +458,9 @@ class ArmJointTrajectoryCommandCfg(CommandTermCfg):
 
     fixed_default: bool = False
     """Whether to keep the commanded arm joints at their default positions."""
+
+    init_range: float = 1.0
+    """Fraction of each arm joint's soft position range used for random goal sampling."""
 
 
 class DesiredFeetSwingHeightCommand(CommandTerm):

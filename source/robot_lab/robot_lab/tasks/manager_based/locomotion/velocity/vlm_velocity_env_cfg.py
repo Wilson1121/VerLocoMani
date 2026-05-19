@@ -133,9 +133,11 @@ class CommandsCfg:
     arm_joint_trajectory = mdp.ArmJointTrajectoryCommandCfg(
         asset_name="robot",
         resampling_time_range=(1.0e6, 1.0e6),
-        trajectory_time=(6.0, 8.0),
+        trajectory_time=(8.0, 12.0),
         hold_time=(1.0, 2.0),
         fixed_default=False,
+        # Soft-limit centers [joint1..joint6] = [0.0, 1.57, -1.4835, 0.0, 0.0, 0.0] rad.
+        init_range=0.9,
         debug_vis=False,
         joint_names=[
             "joint1",
@@ -515,6 +517,43 @@ class EventCfg:
                 "yaw": (-3.14, 3.14),
             },
             "velocity_range": {},
+        },
+    )
+
+    randomize_reset_leg_joints = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    ".*_hip_joint",
+                    ".*_thigh_joint",
+                    ".*_calf_joint",
+                ],
+            ),
+            "position_range": (-0.0, 0.0),
+            "velocity_range": (-0.0, 0.0),
+        },
+    )
+
+    randomize_reset_arm_joints = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    "joint1",
+                    "joint2",
+                    "joint3",
+                    "joint4",
+                    "joint5",
+                    "joint6",
+                ],
+            ),
+            "position_range": (-0.0, 0.0),
+            "velocity_range": (-0.0, 0.0),
         },
     )
 

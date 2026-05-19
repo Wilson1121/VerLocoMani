@@ -15,13 +15,24 @@ from robot_lab.assets import ISAACLAB_ASSETS_DATA_DIR
 # Configuration
 ##
 
+
 UNITREE_Go2Arm_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
+        # False: base 为浮动基座，机器人可以自由运动；True: base 被固定到世界，适合固定机械臂等场景。
         fix_base=False,
+        # True: URDF 中 fixed joint 连接的 link 会尽量合并，减少刚体数量；False: 保留 fixed joint 和对应 link。
         merge_fixed_joints=True,
-        replace_cylinders_with_capsules=True,   #  URDF里有些腿部连杆是圆柱体，替换成胶囊体可以更稳定地检测碰撞，减少卡住的情况
-        # Local asset only provides the mujoco-flavored URDF.
+        # True: 将 URDF 圆柱碰撞体替换为胶囊体，接触更平滑；False: 保留原始圆柱碰撞体。
+        replace_cylinders_with_capsules=False,
+        # 输入 URDF 文件路径，IsaacLab 会先把它转换为 USD，再把 USD 加载进场景。
         asset_path=f"{ISAACLAB_ASSETS_DATA_DIR}/Robots/unitree/Go2Arm_description/urdf/go2_piper_description_mjc_NoGripper.urdf",
+        # 生成 USD 的输出目录；不指定时默认写到 /tmp/IsaacLab/usd_时间戳_随机数。
+        usd_dir=f"{ISAACLAB_ASSETS_DATA_DIR}/Robots/unitree/Go2Arm_description/usd",
+        # 生成 USD 的文件名；最终路径为 usd_dir/usd_file_name。
+        usd_file_name="go2_piper_description_mjc_NoGripper.usd",
+        # True: 每次启动都强制重新转换并覆盖 USD；False: 如果缓存 hash 没变化就复用已有 USD。
+        force_usd_conversion=True,
+        # True: 为刚体启用 contact sensor 数据输出；False: 不生成接触传感数据。
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -33,14 +44,36 @@ UNITREE_Go2Arm_CFG = ArticulationCfg(
             max_depenetration_velocity=1.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=False, 
-            solver_position_iteration_count=4, 
+            enabled_self_collisions=False,
+            solver_position_iteration_count=8,
             solver_velocity_iteration_count=4,
         ),
         joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
             gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=0, damping=0)
         ),
     ),
+    # spawn=sim_utils.MjcfFileCfg(
+    #     fix_base=False,
+    #     asset_path=f"{ISAACLAB_ASSETS_DATA_DIR}/Robots/unitree/Go2Arm_description/mjcf/go2_piper_no_gripper_wbic.xml",
+    #     force_usd_conversion=True,   # 调试 MJCF 转换时强制重新生成 USD，避免复用旧缓存。
+    #     import_inertia_tensor=True,  # True: 使用 MJCF 中的惯性张量；False: 缺失或不导入时由导入器使用默认惯性。
+    #     import_sites=True,           # True: 导入 MJCF <site> 标签，例如 IMU site；False: 不导入这些 site。
+    #     self_collision=False,        # True: 开启机器人内部 link 自碰撞；False: 关闭自碰撞，通常更稳定。
+    #     rigid_props=sim_utils.RigidBodyPropertiesCfg(
+    #         disable_gravity=False,
+    #         retain_accelerations=False,
+    #         linear_damping=0.0,
+    #         angular_damping=0.0,
+    #         max_linear_velocity=1000.0,
+    #         max_angular_velocity=1000.0,
+    #         max_depenetration_velocity=1.0,
+    #     ),
+    #     articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+    #         enabled_self_collisions=False, 
+    #         solver_position_iteration_count=4, 
+    #         solver_velocity_iteration_count=4,
+    #     ),
+    # ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.4),    # root position
         joint_pos={
@@ -52,8 +85,8 @@ UNITREE_Go2Arm_CFG = ArticulationCfg(
             # otherwise reset randomization can clamp them at 0 and the arm gets stuck early in training.
             # Keep the arm reasonably tucked to reduce early falls / illegal_contact terminations.
             "joint1": 0.0,
-            "joint2": 0.2,
-            "joint3": -0.2,
+            "joint2": 1.57,
+            "joint3": -1.48,
             "joint4": 0.0,
             "joint5": 0.0,
             "joint6": 0.0,
@@ -90,11 +123,51 @@ UNITREE_Go2Arm_CFG = ArticulationCfg(
         ),
         "arm": DelayedPDActuatorCfg(
             joint_names_expr=[r"joint[1-6]"],
-            effort_limit=50,
-            velocity_limit=28,
-            stiffness=30.0,
-            damping=1.0,
-            friction=0.0,
+            # effort_limit=50,
+            effort_limit={
+                "joint1": 30.0,
+                "joint2": 20.0,
+                "joint3": 15.0,
+                "joint4": 10.0,
+                "joint5": 8.0,
+                "joint6": 6.0,
+            },
+            armature={
+                "joint1": 0.01,
+                "joint2": 0.01,
+                "joint3": 0.01,
+                "joint4": 0.01,
+                "joint5": 0.01,
+                "joint6": 0.005,
+            },
+            # velocity_limit=4,
+            # stiffness=10.0,
+            # damping=3.0,
+            stiffness={
+                "joint1": 40.0,
+                "joint2": 80.0,
+                "joint3": 60.0,
+                "joint4": 30.0,
+                "joint5": 25.0,
+                "joint6": 20.0,
+            },
+            damping={
+                "joint1": 3.0,
+                "joint2": 5.0,
+                "joint3": 5.0,
+                "joint4": 2.0,
+                "joint5": 2.0,
+                "joint6": 1.0,
+            },
+            friction={
+                "joint1": 0.02,
+                "joint2": 0.02,
+                "joint3": 0.02,
+                "joint4": 0.01,
+                "joint5": 0.01,
+                "joint6": 0.005,
+            },
+            # friction=0.0,
             # armature=0.01,
             min_delay=0,
             max_delay=0,
