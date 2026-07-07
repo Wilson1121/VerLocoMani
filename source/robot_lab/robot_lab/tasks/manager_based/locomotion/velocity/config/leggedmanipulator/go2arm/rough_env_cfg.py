@@ -31,8 +31,23 @@ class UnitreeGo2ArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
         self.scene.height_scanner_base.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
 
+        # change terrain to flat
+        self.scene.terrain.terrain_type = "plane"
+        self.scene.terrain.terrain_generator = None
+
+
         # ------------------------------Observations-------------------------
         # 暂时不改observation的scale、clip
+
+        # ------------------------------Commands------------------------------
+        # 机体速度命令范围。
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.50, 0.50)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.50, 0.50)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.50, 0.50)
+        # 机体姿态与高度命令范围。
+        self.commands.base_pose.ranges.roll = (-0.2, 0.2)
+        self.commands.base_pose.ranges.pitch = (-0.2, 0.2)
+        self.commands.base_pose.ranges.height = (0.3, 0.5)
 
         # ------------------------------Actions------------------------------
         self.actions.joint_pos.scale = {".*_hip_joint": 0.125, "^(?!.*_hip_joint).*": 0.25}
@@ -63,17 +78,22 @@ class UnitreeGo2ArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.action_rate_exp.weight = 0.001
         self.rewards.action_rate_exp.params["std"] = math.sqrt(0.1)
 
-        # 接触时序奖励。
-        self.rewards.feet_contact.weight = 1.0
+        # 保留原接触时序奖励配置，但停用其训练权重。
+        self.rewards.feet_contact.weight = 0.0
         self.rewards.feet_contact.params["force_variance"] = 1.0
         self.rewards.feet_contact.params["height_variance"] = 0.05
         self.rewards.feet_contact.params["vel_variance"] = 0.01
         self.rewards.feet_contact.params["contact_force_threshold"] = 1.0
         self.rewards.feet_contact.params["height_contact_epsilon"] = 1.0e-4
+        # 保留旧步态奖励配置，但停用以改用 IsaacLab rough 的弱步态先验。
+        self.rewards.feet_air_time_variance.weight = 0.0
+        self.rewards.feet_air_time.weight = 0.0
 
-        self.rewards.feet_air_time_variance.weight = -1.0
-
-        self.rewards.feet_air_time.weight = 0.25
+        # IsaacLab Unitree Go2 rough uses only a weak foot-air-time gait prior.
+        self.rewards.isaaclab_feet_air_time.weight = 0.2
+        self.rewards.isaaclab_feet_air_time.params["threshold"] = 0.5
+        self.rewards.isaaclab_feet_air_time.params["command_threshold"] = 0.1
+        self.rewards.isaaclab_feet_air_time.params["sensor_cfg"].body_names = self.foot_link_name
 
         # 存活与终止奖励。
         # self.rewards.is_alive.weight = 0.1
@@ -87,15 +107,3 @@ class UnitreeGo2ArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
 
         # ------------------------------Curriculums------------------------------
-
-
-        # ------------------------------Commands------------------------------
-        # 机体速度命令范围。
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.25, 0.25)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.25, 0.25)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.25, 0.25)
-
-        # 机体姿态与高度命令范围。
-        self.commands.base_pose.ranges.roll = (-0.2, 0.2)
-        self.commands.base_pose.ranges.pitch = (-0.2, 0.2)
-        self.commands.base_pose.ranges.height = (0.3, 0.5)

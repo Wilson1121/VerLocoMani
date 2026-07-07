@@ -122,6 +122,7 @@ class CommandsCfg:
     base_pose = mdp.BasePoseCommandCfg(
         asset_name="robot",
         torso_body_name="base",
+        height_sensor_name="height_scanner_base",
         resampling_time_range=(10.0, 10.0),
         debug_vis=False,
         ranges=mdp.BasePoseCommandCfg.Ranges(
@@ -148,13 +149,14 @@ class CommandsCfg:
             "joint6",
         ],
     )
-    feet_swing_height = mdp.DesiredFeetSwingHeightCommandCfg(
-        resampling_time_range=(10.0, 10.0),
-        max_height=0.08,
-        gait_frequency=2.0,
-        phase_offsets=(0.0, 0.5, 0.5, 0.0),
-        clip_to_positive=True,
-    )
+    # 已停用显式步态相位命令，改用 IsaacLab rough 的弱步态先验。
+    # feet_swing_height = mdp.DesiredFeetSwingHeightCommandCfg(
+    #     resampling_time_range=(10.0, 10.0),
+    #     max_height=0.08,
+    #     gait_frequency=2.0,
+    #     phase_offsets=(0.0, 0.5, 0.5, 0.0),
+    #     clip_to_positive=True,
+    # )
 
 
 @configclass
@@ -310,13 +312,13 @@ class ObservationsCfg:
             clip=(-100.0, 100.0),
             scale=1.0,
         )
-        # Desired feet swing height command for [FL, FR, RL, RR], 4 Dim.
-        feet_swing_height_command = ObsTerm(
-            func=mdp.generated_commands,
-            params={"command_name": "feet_swing_height"},
-            clip=(0.0, 1.0),
-            scale=1.0,
-        )
+        # 已停用显式步态相位命令，改用 IsaacLab rough 的弱步态先验。
+        # feet_swing_height_command = ObsTerm(
+        #     func=mdp.generated_commands,
+        #     params={"command_name": "feet_swing_height"},
+        #     clip=(0.0, 1.0),
+        #     scale=1.0,
+        # )
         # Last policy action for leg joints, 12 Dim.
         actions = ObsTerm(
             func=mdp.last_action,
@@ -436,13 +438,13 @@ class ObservationsCfg:
             clip=(-100.0, 100.0),
             scale=1.0,
         )
-        # Desired feet swing height command for [FL, FR, RL, RR], 4 Dim.
-        feet_swing_height_command = ObsTerm(
-            func=mdp.generated_commands,
-            params={"command_name": "feet_swing_height"},
-            clip=(0.0, 1.0),
-            scale=1.0,
-        )
+        # 已停用显式步态相位命令，改用 IsaacLab rough 的弱步态先验。
+        # feet_swing_height_command = ObsTerm(
+        #     func=mdp.generated_commands,
+        #     params={"command_name": "feet_swing_height"},
+        #     clip=(0.0, 1.0),
+        #     scale=1.0,
+        # )
         # Last policy action for leg joints, 12 Dim.
         actions = ObsTerm(
             func=mdp.last_action,
@@ -582,7 +584,11 @@ class RewardsCfg:
     track_base_height_exp = RewTerm(
         func=mdp.track_base_height_exp,
         weight=0.0,
-        params={"command_name": "base_pose", "std": math.sqrt(0.05)},
+        params={
+            "command_name": "base_pose",
+            "std": math.sqrt(0.05),
+            "sensor_cfg": SceneEntityCfg("height_scanner_base"),
+        },
     )
     base_lin_vel_z_exp = RewTerm(
         func=mdp.base_lin_vel_z_exp,
@@ -722,6 +728,24 @@ class RewardsCfg:
         },
     )
 
+    # IsaacLab quadruped rough gait reward.
+    isaaclab_feet_air_time = RewTerm(
+        func=mdp.isaaclab_feet_air_time,
+        weight=0.0,
+        params={
+            "command_name": "base_velocity",
+            # 期望的足端腾空时间基准，单位 s
+            "threshold": 0.5,
+            # 启用奖励所需的最小 XY 平移速度命令，单位 m/s
+            "command_threshold": 0.1,
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+        },
+    )
+
     is_alive = RewTerm(
         func=mdp.is_alive,
         weight=0.0
@@ -761,6 +785,8 @@ class TerminationsCfg:
 @configclass
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
+
+    # terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
 
 
 ##

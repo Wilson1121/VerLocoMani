@@ -136,9 +136,17 @@ class BasePoseCommand(CommandTerm):
             self.torso_projected_gravity_goal[:, :2] - self.robot.data.projected_gravity_b[:, :2],
             dim=1,
         )
-        self.metrics["torso_height_error"] = torch.abs(
-            self.torso_roll_pitch_height_command[:, 2] - self.robot.data.body_pos_w[:, self.torso_body_id, 2]
-        )
+        target_height = self.torso_roll_pitch_height_command[:, 2]
+        base_z = self.robot.data.body_pos_w[:, self.torso_body_id, 2]
+        if self.cfg.height_sensor_name is not None:
+            sensor = self._env.scene[self.cfg.height_sensor_name]
+            ray_hits = sensor.data.ray_hits_w[..., 2]
+            valid_hits = torch.isfinite(ray_hits).all(dim=1) & (torch.max(torch.abs(ray_hits), dim=1).values <= 1e6)
+            terrain_height = torch.mean(ray_hits, dim=1)
+            target_z = torch.where(valid_hits, target_height + terrain_height, base_z)
+        else:
+            target_z = target_height
+        self.metrics["torso_height_error"] = torch.abs(target_z - base_z)
 
     def _resample_command(self, env_ids: Sequence[int]):
         """Sample roll, pitch, and height targets directly from uniform ranges."""
@@ -426,6 +434,9 @@ class BasePoseCommandCfg(CommandTermCfg):
 
     torso_body_name: str = MISSING
     """Name of the torso body to associate with the command."""
+
+    height_sensor_name: str | None = None
+    """Optional ray-caster sensor name used to interpret height commands relative to terrain."""
 
     @configclass
     class Ranges:

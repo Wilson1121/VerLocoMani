@@ -13,10 +13,15 @@ class UnitreeGo2ArmFlatEnvCfg(UnitreeGo2ArmRoughEnvCfg):
         super().__post_init__()
 
         # override rewards
+        self.rewards.track_base_height_exp.params["sensor_cfg"] = None
+        self.commands.base_pose.height_sensor_name = None
 
         # no height scan
+        self.scene.height_scanner = None
+        self.scene.height_scanner_base = None
 
         # no terrain curriculum
+        self.curriculum.terrain_levels = None
 
         # change terrain to flat
         self.scene.terrain.terrain_type = "plane"

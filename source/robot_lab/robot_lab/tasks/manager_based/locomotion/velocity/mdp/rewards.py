@@ -64,15 +64,28 @@ def track_base_orientation_exp(
 
 
 def track_base_height_exp(
-    env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    sensor_cfg: SceneEntityCfg | None = None,
 ) -> torch.Tensor:
     """Reward tracking of base height target using a squared-error exponential kernel."""
     asset: Articulation = env.scene[asset_cfg.name]
     command_term = env.command_manager.get_term(command_name)
 
-    height_error = torch.square(
-        command_term.torso_roll_pitch_height_command[:, 2] - asset.data.body_pos_w[:, command_term.torso_body_id, 2]
-    )
+    target_height = command_term.torso_roll_pitch_height_command[:, 2]
+    base_z = asset.data.body_pos_w[:, command_term.torso_body_id, 2]
+    if sensor_cfg is not None:
+        sensor: RayCaster = env.scene[sensor_cfg.name]
+        ray_hits = sensor.data.ray_hits_w[..., 2]
+        valid_hits = torch.isfinite(ray_hits).all(dim=1) & (torch.max(torch.abs(ray_hits), dim=1).values <= 1e6)
+        terrain_height = torch.mean(ray_hits, dim=1)
+        target_z = torch.where(valid_hits, target_height + terrain_height, base_z)
+    else:
+        target_z = target_height
+
+    height_error = torch.square(target_z - base_z)
     return torch.exp(-height_error / std**2)
 
 
@@ -427,6 +440,22 @@ def feet_air_time(
     # no reward for zero command
     reward *= torch.norm(env.command_manager.get_command(command_name), dim=1) > 0.1
     reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return reward
+
+
+def isaaclab_feet_air_time(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    sensor_cfg: SceneEntityCfg,
+    threshold: float,
+    command_threshold: float,
+) -> torch.Tensor:
+    """Reward foot air time using the IsaacLab rough-locomotion definition."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    first_contact = contact_sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
+    last_air_time = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
+    reward = torch.sum((last_air_time - threshold) * first_contact, dim=1)
+    reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > command_threshold
     return reward
 
 
