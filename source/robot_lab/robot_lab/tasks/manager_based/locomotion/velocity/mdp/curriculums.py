@@ -13,9 +13,46 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import torch
+from isaaclab.assets import Articulation
+from isaaclab.managers import SceneEntityCfg
+from isaaclab.terrains import TerrainImporter
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+
+def terrain_levels_vel_with_metrics(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    high_level_threshold: int = 6,
+) -> dict[str, float]:
+    """Update velocity-based terrain levels and report compact curriculum metrics."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    terrain: TerrainImporter = env.scene.terrain
+    command = env.command_manager.get_command("base_velocity")
+
+    distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
+    move_up = distance > terrain.cfg.terrain_generator.size[0] / 2
+    move_down = distance < torch.norm(command[env_ids, :2], dim=1) * env.max_episode_length_s * 0.5
+    move_down &= ~move_up
+
+    next_levels = terrain.terrain_levels[env_ids] + move_up.long() - move_down.long()
+    recycle = next_levels >= terrain.max_terrain_level
+    terrain.update_env_origins(env_ids, move_up, move_down)
+
+    levels = terrain.terrain_levels
+    metric_values = torch.stack(
+        (
+            torch.mean(levels.float()),
+            torch.mean((levels >= high_level_threshold).float()),
+            torch.mean(move_up.float()),
+            torch.mean(move_down.float()),
+            torch.mean(recycle.float()),
+        )
+    ).detach().cpu().tolist()
+    metric_names = ("mean", "high_level_ratio", "move_up_ratio", "move_down_ratio", "recycle_ratio")
+    return dict(zip(metric_names, metric_values, strict=True))
 
 
 def command_levels_lin_vel(

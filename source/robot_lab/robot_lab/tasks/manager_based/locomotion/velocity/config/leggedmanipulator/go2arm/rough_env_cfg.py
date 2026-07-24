@@ -3,8 +3,11 @@
 
 import math
 
+import isaaclab.terrains as terrain_gen
+from isaaclab.terrains import TerrainGeneratorCfg
 from isaaclab.utils import configclass
 
+import robot_lab.tasks.manager_based.locomotion.velocity.mdp as mdp
 from robot_lab.tasks.manager_based.locomotion.velocity.vlm_velocity_env_cfg import LocomotionVelocityRoughEnvCfg
 
 ##
@@ -14,6 +17,58 @@ from robot_lab.tasks.manager_based.locomotion.velocity.vlm_velocity_env_cfg impo
 # from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 # use local assets
 from robot_lab.assets.unitree import UNITREE_Go2Arm_CFG  # isort: skip
+
+
+GO2ARM_BLIND_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    curriculum=True,
+    use_cache=False,
+    sub_terrains={
+        "flat": terrain_gen.MeshPlaneTerrainCfg(proportion=0.20),
+        "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+            proportion=0.35,
+            noise_range=(0.0, 0.05),
+            noise_step=0.01,
+            border_width=0.25,
+        ),
+        "pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
+            proportion=0.125,
+            slope_range=(0.0, 0.18),
+            platform_width=2.0,
+            border_width=0.25,
+        ),
+        "pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
+            proportion=0.125,
+            slope_range=(0.0, 0.18),
+            platform_width=2.0,
+            border_width=0.25,
+        ),
+        "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.10,
+            step_height_range=(0.03, 0.08),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.10,
+            step_height_range=(0.03, 0.08),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+    },
+)
+"""Low-to-medium difficulty terrains for blind Go2Arm locomotion."""
+
 
 # 继承vlm_velocity_env_cfg里的LocomotionVelocityRoughEnvCfg(速度控制机器人)类，
 # 并指定实例名UnitreeGo2ArmRoughEnvCfg，与gym.register里的env_cfg_entry_point一致，并重写了部分配置
@@ -28,13 +83,14 @@ class UnitreeGo2ArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # ------------------------------Sence------------------------------
         self.scene.robot = UNITREE_Go2Arm_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
+        # The policy is blind; keep only the compact scanner used by terrain-relative height terms.
+        self.scene.height_scanner = None
         self.scene.height_scanner_base.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
 
-        # change terrain to flat
-        self.scene.terrain.terrain_type = "plane"
-        self.scene.terrain.terrain_generator = None
-
+        # Start on the easiest terrain rows and let the official curriculum advance difficulty.
+        self.scene.terrain.terrain_type = "generator"
+        self.scene.terrain.terrain_generator = GO2ARM_BLIND_ROUGH_TERRAINS_CFG
+        self.scene.terrain.max_init_terrain_level = 1
 
         # ------------------------------Observations-------------------------
         # 暂时不改observation的scale、clip
@@ -47,7 +103,7 @@ class UnitreeGo2ArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 机体姿态与高度命令范围。
         self.commands.base_pose.ranges.roll = (-0.2, 0.2)
         self.commands.base_pose.ranges.pitch = (-0.2, 0.2)
-        self.commands.base_pose.ranges.height = (0.3, 0.5)
+        self.commands.base_pose.ranges.height = (0.4, 0.4)
 
         # ------------------------------Actions------------------------------
         self.actions.joint_pos.scale = {".*_hip_joint": 0.125, "^(?!.*_hip_joint).*": 0.25}
@@ -94,6 +150,15 @@ class UnitreeGo2ArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.isaaclab_feet_air_time.params["threshold"] = 0.5
         self.rewards.isaaclab_feet_air_time.params["command_threshold"] = 0.1
         self.rewards.isaaclab_feet_air_time.params["sensor_cfg"].body_names = self.foot_link_name
+        self.rewards.feet_stumble.weight = -0.2
+        self.rewards.feet_stumble.params["sensor_cfg"].body_names = self.foot_link_name
+        self.rewards.feet_slide.weight = -0.05
+        self.rewards.feet_slide.params["sensor_cfg"].body_names = self.foot_link_name
+        self.rewards.feet_slide.params["asset_cfg"].body_names = self.foot_link_name
+        self.rewards.feet_height_body.weight = -2.0
+        self.rewards.feet_height_body.params["target_height"] = -0.20
+        self.rewards.feet_height_body.params["tanh_mult"] = 2.0
+        self.rewards.feet_height_body.params["asset_cfg"].body_names = self.foot_link_name
 
         # 存活与终止奖励。
         # self.rewards.is_alive.weight = 0.1
@@ -107,3 +172,4 @@ class UnitreeGo2ArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
 
         # ------------------------------Curriculums------------------------------
+        self.curriculum.terrain_levels.func = mdp.terrain_levels_vel_with_metrics

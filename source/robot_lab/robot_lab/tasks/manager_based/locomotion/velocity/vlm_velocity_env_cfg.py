@@ -745,6 +745,47 @@ class RewardsCfg:
             ),
         },
     )
+    feet_stumble = RewTerm(
+        func=mdp.feet_stumble,
+        weight=0.0,
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+        },
+    )
+    feet_slide = RewTerm(
+        func=mdp.feet_slide,
+        weight=0.0,
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+        },
+    )
+    feet_height_body = RewTerm(
+        func=mdp.feet_height_body,
+        weight=0.0,
+        params={
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+            "target_height": -0.22,
+            "tanh_mult": 2.0,
+        },
+    )
 
     is_alive = RewTerm(
         func=mdp.is_alive,
@@ -766,19 +807,23 @@ class TerminationsCfg:
     # 基座翻倒终止：base 倾角超过阈值即终止。
     bad_orientation = DoneTerm(
         func=mdp.bad_orientation,
-        params={"asset_cfg": SceneEntityCfg("robot", body_names="base"), "limit_angle": 1.0},
+        params={"asset_cfg": SceneEntityCfg("robot", body_names="base"), "limit_angle": 0.8},
     )
 
-    # 只允许足端接触地面：除四个足端外，任意刚体接触力超过阈值即终止。
-    illegal_contact = DoneTerm(
+    # Base contact indicates a fall, while leg and arm contacts remain recoverable on rough terrain.
+    base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=[r"^(?!.*(?:FL_foot|FR_foot|RL_foot|RR_foot)$).+"],
-            ),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["base"]),
             "threshold": 1.0,
         },
+    )
+
+    # Treat leaving the generated terrain map as a time-out rather than a policy failure.
+    terrain_out_of_bounds = DoneTerm(
+        func=mdp.terrain_out_of_bounds,
+        params={"asset_cfg": SceneEntityCfg("robot"), "distance_buffer": 3.0},
+        time_out=True,
     )
 
 
@@ -786,7 +831,7 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    # terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
+    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
 
 
 ##
