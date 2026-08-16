@@ -15,7 +15,7 @@ from robot_lab.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
 ##
 # Pre-defined configs
 ##
-from robot_lab.assets.unitree import UNITREE_GO2W_CFG  # isort: skip
+from robot_lab.assets.unitree import UNITREE_Go2WArm_CFG  # isort: skip
 
 
 @configclass

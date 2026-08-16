@@ -278,6 +278,158 @@ UNITREE_GO2_CFG = ArticulationCfg(
 """Configuration of Unitree Go2 using DC motor.
 """
 
+UNITREE_Go2WArm_CFG = ArticulationCfg(
+    spawn=sim_utils.UrdfFileCfg(
+        # False: base 为浮动基座，机器人可以自由运动；True: base 被固定到世界，适合固定机械臂等场景。
+        fix_base=False,
+        # True: URDF 中 fixed joint 连接的 link 会尽量合并，减少刚体数量；False: 保留 fixed joint 和对应 link。
+        merge_fixed_joints=True,
+        # True: 将 URDF 圆柱碰撞体替换为胶囊体，接触更平滑；False: 保留原始圆柱碰撞体。
+        replace_cylinders_with_capsules=False,
+        # 输入 URDF 文件路径，IsaacLab 会先把它转换为 USD，再把 USD 加载进场景。
+        asset_path=f"{ISAACLAB_ASSETS_DATA_DIR}/Robots/unitree/Go2wArm_description/urdf/go2w_piper_description_NoGrip.urdf",
+        # 生成 USD 的输出目录；不指定时默认写到 /tmp/IsaacLab/usd_时间戳_随机数。
+        usd_dir=f"{ISAACLAB_ASSETS_DATA_DIR}/Robots/unitree/Go2wArm_description/usd",
+        # 生成 USD 的文件名；最终路径为 usd_dir/usd_file_name。
+        usd_file_name="go2w_piper_description_NoGrip.usd",
+        # True: 每次启动都强制重新转换并覆盖 USD；False: 如果缓存 hash 没变化就复用已有 USD。
+        force_usd_conversion=True,
+        # True: 为刚体启用 contact sensor 数据输出；False: 不生成接触传感数据。
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=False,
+            solver_position_iteration_count=8,
+            solver_velocity_iteration_count=4,
+        ),
+        joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
+            gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=0, damping=0)
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.45),    # root position
+        joint_pos={
+            ".*L_hip_joint": 0.0,
+            ".*R_hip_joint": -0.0,
+            "F.*_thigh_joint": 0.8,
+            "R.*_thigh_joint": 0.8,
+            ".*_calf_joint": -1.5,
+            ".*_foot_joint": 0.0,
+            # Piper arm joints (joint1..joint6)
+            # Avoid initializing at one-sided joint limits (joint2: [0, pi], joint3: [-2.967, 0]),
+            # otherwise reset randomization can clamp them at 0 and the arm gets stuck early in training.
+            # Keep the arm reasonably tucked to reduce early falls / illegal_contact terminations.
+            "joint1": 0.0,
+            "joint2": 1.57,
+            "joint3": -1.48,
+            "joint4": 0.0,
+            "joint5": 0.0,
+            "joint6": 0.0,
+        },
+        joint_vel={".*": 0.0},
+    ),
+    soft_joint_pos_limit_factor=0.9,
+    # 按 URDF 名称分三组执行器：
+    # - hip_thigh: 8 个腿部关节（*_hip_joint, *_thigh_joint）
+    # - calf: 4 个腿部关节（*_calf_joint）
+    # - upper: 6 个机械臂关节（joint1..joint6）
+    actuators={
+        "leg_hip_thigh": DelayedPDActuatorCfg(
+            joint_names_expr=[r".*_hip_joint", r".*_thigh_joint"],
+            effort_limit=23.5,  
+            velocity_limit=30.0,
+            stiffness=30.0,     
+            damping=1.0,       
+            friction=0.01,
+            # armature=0.01,    # 惯量
+            min_delay=0,        # PD 控制的最小延迟，单位为仿真步数
+            max_delay=0,        # PD 控制的最大延迟，单位为仿真步数
+        ),
+        "leg_calf": DelayedPDActuatorCfg(
+            joint_names_expr=[r".*_calf_joint"],
+            effort_limit=23.5,
+            velocity_limit=30.0,
+            stiffness=30.0,     
+            damping=1.0,        
+            friction=0.01,
+            # armature=0.01,
+            min_delay=0,
+            max_delay=0,  
+        ),
+        "wheels": DelayedPDActuatorCfg(
+            joint_names_expr=[".*_foot_joint"],
+            effort_limit=23.5,
+            velocity_limit=30.0,
+            stiffness=0.0,
+            damping=0.5,
+            friction=0.01,
+            min_delay=0,
+            max_delay=0,
+        ),
+        "arm": DelayedPDActuatorCfg(
+            joint_names_expr=[r"joint[1-6]"],
+            # effort_limit=50,
+            effort_limit={
+                "joint1": 30.0,
+                "joint2": 20.0,
+                "joint3": 15.0,
+                "joint4": 10.0,
+                "joint5": 8.0,
+                "joint6": 6.0,
+            },
+            armature={
+                "joint1": 0.01,
+                "joint2": 0.01,
+                "joint3": 0.01,
+                "joint4": 0.01,
+                "joint5": 0.01,
+                "joint6": 0.005,
+            },
+            # velocity_limit=4,
+            # stiffness=10.0,
+            # damping=3.0,
+            stiffness={
+                "joint1": 40.0,
+                "joint2": 80.0,
+                "joint3": 60.0,
+                "joint4": 30.0,
+                "joint5": 25.0,
+                "joint6": 20.0,
+            },
+            damping={
+                "joint1": 3.0,
+                "joint2": 5.0,
+                "joint3": 5.0,
+                "joint4": 2.0,
+                "joint5": 2.0,
+                "joint6": 1.0,
+            },
+            friction={
+                "joint1": 0.02,
+                "joint2": 0.02,
+                "joint3": 0.02,
+                "joint4": 0.01,
+                "joint5": 0.01,
+                "joint6": 0.005,
+            },
+            # friction=0.0,
+            # armature=0.01,
+            min_delay=0,
+            max_delay=0,
+        ),
+    },
+)
+"""Configuration of Unitree Go2wArm using DC motor.
+"""
+
 UNITREE_GO2W_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
         fix_base=False,

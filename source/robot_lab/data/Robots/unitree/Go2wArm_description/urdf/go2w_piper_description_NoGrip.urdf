@@ -80,9 +80,9 @@ Stephen Brawner (brawner@gmail.com)
       <origin xyz="0 0 0" rpy="0 0 0"/>  <!-- 质量中心与几何中心重合 -->
       <mass value="0.3"/>  <!-- 300克 -->
       <inertia
-        ixx="0.0002" ixy="0" ixz="0"
-        iyy="0.0001" iyz="0"
-        izz="0.0002"/>  <!-- 惯性矩阵基于长方体公式 -->
+        ixx="0.0001825" ixy="0" ixz="0"
+        iyy="0.0003825" iyz="0"
+        izz="0.0005200"/>  <!-- 惯性矩阵基于长方体公式 -->
     </inertial>
   </link>
 
