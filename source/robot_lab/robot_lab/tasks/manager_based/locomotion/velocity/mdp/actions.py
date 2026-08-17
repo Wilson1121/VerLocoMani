@@ -54,8 +54,7 @@ class CommandArmPolicyLegJointPositionAction(JointAction):
 
     def process_actions(self, actions: torch.Tensor):
         """Process policy leg actions and fetch arm targets from the command manager."""
-        self._raw_actions[:] = actions
-        self._processed_actions = self._raw_actions * self._scale + self._offset
+        super().process_actions(actions)
 
         self._arm_raw_actions[:] = self.command_manager.get_command(self.arm_command_name)
         self._arm_processed_actions[:] = self._arm_raw_actions

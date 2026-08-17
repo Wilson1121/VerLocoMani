@@ -1,15 +1,13 @@
 # Copyright (c) 2024-2026 Ziqi Fan
 # SPDX-License-Identifier: Apache-2.0
 
-from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
-import robot_lab.tasks.manager_based.locomotion.velocity.mdp as mdp
-from robot_lab.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
-    ActionsCfg,
+from robot_lab.tasks.manager_based.locomotion.velocity.veh_velocity_env_cfg import (
+    ARM_JOINT_NAMES,
+    LEG_JOINT_NAMES,
     LocomotionVelocityRoughEnvCfg,
-    RewardsCfg,
+    WHEEL_JOINT_NAMES,
 )
 
 ##
@@ -19,91 +17,29 @@ from robot_lab.assets.unitree import UNITREE_Go2WArm_CFG  # isort: skip
 
 
 @configclass
-class UnitreeGo2WActionsCfg(ActionsCfg):
-    """Action specifications for the MDP."""
-
-    joint_pos = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=[""], scale=0.25, use_default_offset=True, clip=None, preserve_order=True
-    )
-
-    joint_vel = mdp.JointVelocityActionCfg(
-        asset_name="robot", joint_names=[""], scale=5.0, use_default_offset=True, clip=None, preserve_order=True
-    )
-
-
-@configclass
-class UnitreeGo2WRewardsCfg(RewardsCfg):
-    """Reward terms for the MDP."""
-
-    joint_vel_wheel_l2 = RewTerm(
-        func=mdp.joint_vel_l2, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names="")}
-    )
-
-    joint_acc_wheel_l2 = RewTerm(
-        func=mdp.joint_acc_l2, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names="")}
-    )
-
-    joint_torques_wheel_l2 = RewTerm(
-        func=mdp.joint_torques_l2, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names="")}
-    )
-
-
-@configclass
 class UnitreeGo2WArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
-    actions: UnitreeGo2WActionsCfg = UnitreeGo2WActionsCfg()
-    rewards: UnitreeGo2WRewardsCfg = UnitreeGo2WRewardsCfg()
-
     base_link_name = "base"
     foot_link_name = ".*_foot"
-
-    # fmt: off
-    leg_joint_names = [
-        "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
-        "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
-        "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
-        "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
-    ]
-    wheel_joint_names = [
-        "FR_foot_joint", "FL_foot_joint", "RR_foot_joint", "RL_foot_joint",
-    ]
-    joint_names = leg_joint_names + wheel_joint_names
-    # fmt: on
+    leg_joint_names = LEG_JOINT_NAMES
+    arm_joint_names = ARM_JOINT_NAMES
+    wheel_joint_names = WHEEL_JOINT_NAMES
 
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
 
         # ------------------------------Sence------------------------------
-        self.scene.robot = UNITREE_GO2W_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = UNITREE_Go2WArm_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
         self.scene.height_scanner_base.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
 
         # ------------------------------Observations------------------------------
-        self.observations.policy.joint_pos.func = mdp.joint_pos_rel_without_wheel
-        self.observations.policy.joint_pos.params["wheel_asset_cfg"] = SceneEntityCfg(
-            "robot", joint_names=self.wheel_joint_names
-        )
-        self.observations.critic.joint_pos.func = mdp.joint_pos_rel_without_wheel
-        self.observations.critic.joint_pos.params["wheel_asset_cfg"] = SceneEntityCfg(
-            "robot", joint_names=self.wheel_joint_names
-        )
         self.observations.policy.base_lin_vel.scale = 2.0
         self.observations.policy.base_ang_vel.scale = 0.25
         self.observations.policy.joint_pos.scale = 1.0
         self.observations.policy.joint_vel.scale = 0.05
         self.observations.policy.base_lin_vel = None
         self.observations.policy.height_scan = None
-        self.observations.policy.joint_pos.params["asset_cfg"].joint_names = self.joint_names
-        self.observations.policy.joint_vel.params["asset_cfg"].joint_names = self.joint_names
-
-        # ------------------------------Actions------------------------------
-        # reduce action scale
-        self.actions.joint_pos.scale = {".*_hip_joint": 0.125, "^(?!.*_hip_joint).*": 0.25}
-        self.actions.joint_vel.scale = 5.0
-        self.actions.joint_pos.clip = {".*": (-100.0, 100.0)}
-        self.actions.joint_vel.clip = {".*": (-100.0, 100.0)}
-        self.actions.joint_pos.joint_names = self.leg_joint_names
-        self.actions.joint_vel.joint_names = self.wheel_joint_names
 
         # ------------------------------Events------------------------------
         self.events.randomize_reset_base.params = {
@@ -215,7 +151,7 @@ class UnitreeGo2WArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.upward.weight = 1.0
 
         # If the weight of rewards is 0, set rewards to None
-        if self.__class__.__name__ == "UnitreeGo2WRoughEnvCfg":
+        if self.__class__.__name__ == "UnitreeGo2WArmRoughEnvCfg":
             self.disable_zero_weight_rewards()
 
         # ------------------------------Terminations------------------------------
