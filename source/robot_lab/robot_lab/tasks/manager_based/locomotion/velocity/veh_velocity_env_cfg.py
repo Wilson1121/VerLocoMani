@@ -189,21 +189,21 @@ class ObservationsCfg:
         # Projected gravity, 3 Dim.
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
-            noise=Unoise(n_min=-0.05, n_max=0.05),
+            noise=Unoise(n_min=-0.01, n_max=0.01),
             clip=(-100.0, 100.0),
             scale=1.0,
         )
         # Base linear velocity, 3 Dim.
         base_lin_vel = ObsTerm(
             func=mdp.base_lin_vel,
-            noise=Unoise(n_min=-0.1, n_max=0.1),
+            noise=Unoise(n_min=-0.01, n_max=0.01),
             clip=(-100.0, 100.0),
             scale=1.0,
         )
         # Base angular velocity, 3 Dim.
         base_ang_vel = ObsTerm(
             func=mdp.base_ang_vel,
-            noise=Unoise(n_min=-0.2, n_max=0.2),
+            noise=Unoise(n_min=-0.1, n_max=0.1),
             clip=(-100.0, 100.0),
             scale=1.0,
         )
@@ -212,7 +212,9 @@ class ObservationsCfg:
             func=mdp.joint_pos_rel,
             params={
                 "asset_cfg": SceneEntityCfg(
-                    "robot", joint_names=POSITION_OBS_JOINT_NAMES, preserve_order=True
+                    "robot",
+                    joint_names=POSITION_OBS_JOINT_NAMES,
+                    preserve_order=True,
                 )
             },
             noise=Unoise(n_min=-0.01, n_max=0.01),
@@ -224,10 +226,12 @@ class ObservationsCfg:
             func=mdp.joint_vel_rel,
             params={
                 "asset_cfg": SceneEntityCfg(
-                    "robot", joint_names=VELOCITY_OBS_JOINT_NAMES, preserve_order=True
+                    "robot",
+                    joint_names=VELOCITY_OBS_JOINT_NAMES, 
+                    preserve_order=True,
                 )
             },
-            noise=Unoise(n_min=-1.5, n_max=1.5),
+            noise=Unoise(n_min=-0.2, n_max=0.2),
             clip=(-100.0, 100.0),
             scale=1.0,
         )
@@ -292,7 +296,9 @@ class ObservationsCfg:
             func=mdp.joint_pos_rel,
             params={
                 "asset_cfg": SceneEntityCfg(
-                    "robot", joint_names=POSITION_OBS_JOINT_NAMES, preserve_order=True
+                    "robot",
+                    joint_names=POSITION_OBS_JOINT_NAMES,
+                    preserve_order=True,
                 )
             },
             clip=(-100.0, 100.0),
@@ -303,7 +309,9 @@ class ObservationsCfg:
             func=mdp.joint_vel_rel,
             params={
                 "asset_cfg": SceneEntityCfg(
-                    "robot", joint_names=VELOCITY_OBS_JOINT_NAMES, preserve_order=True
+                    "robot",
+                    joint_names=VELOCITY_OBS_JOINT_NAMES,
+                    preserve_order=True,
                 )
             },
             clip=(-100.0, 100.0),
@@ -356,39 +364,39 @@ class EventCfg:
     """Configuration for events."""
 
     # startup
-    randomize_rigid_body_material = EventTerm(
-        func=mdp.randomize_rigid_body_material,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.3, 1.0),
-            "dynamic_friction_range": (0.3, 0.8),
-            "restitution_range": (0.0, 0.5),
-            "num_buckets": 64,
-        },
-    )
+    # randomize_rigid_body_material = EventTerm(
+    #     func=mdp.randomize_rigid_body_material,
+    #     mode="startup",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+    #         "static_friction_range": (0.3, 1.0),
+    #         "dynamic_friction_range": (0.3, 0.8),
+    #         "restitution_range": (0.0, 0.5),
+    #         "num_buckets": 64,
+    #     },
+    # )
 
-    randomize_rigid_body_mass_base = EventTerm(
-        func=mdp.randomize_rigid_body_mass,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=""),
-            "mass_distribution_params": (-1.0, 3.0),
-            "operation": "add",
-            "recompute_inertia": True,
-        },
-    )
+    # randomize_rigid_body_mass_base = EventTerm(
+    #     func=mdp.randomize_rigid_body_mass,
+    #     mode="startup",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=""),
+    #         "mass_distribution_params": (-1.0, 3.0),
+    #         "operation": "add",
+    #         "recompute_inertia": True,
+    #     },
+    # )
 
-    randomize_rigid_body_mass_others = EventTerm(
-        func=mdp.randomize_rigid_body_mass,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "mass_distribution_params": (0.7, 1.3),
-            "operation": "scale",
-            "recompute_inertia": True,
-        },
-    )
+    # randomize_rigid_body_mass_others = EventTerm(
+    #     func=mdp.randomize_rigid_body_mass,
+    #     mode="startup",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+    #         "mass_distribution_params": (0.7, 1.3),
+    #         "operation": "scale",
+    #         "recompute_inertia": True,
+    #     },
+    # )
 
     # Skip: inertia updated via mass randomization by setting recompute_inertia=True
     # randomize_rigid_body_inertia = EventTerm(
@@ -401,104 +409,222 @@ class EventCfg:
     #     },
     # )
 
-    randomize_com_positions = EventTerm(
-        func=mdp.randomize_rigid_body_com,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
-        },
-    )
+    # randomize_com_positions = EventTerm(
+    #     func=mdp.randomize_rigid_body_com,
+    #     mode="startup",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+    #         "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
+    #     },
+    # )
 
     # reset
-    randomize_apply_external_force_torque = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=""),
-            "force_range": (-10.0, 10.0),
-            "torque_range": (-10.0, 10.0),
-        },
-    )
-
-    reset_leg_joints = EventTerm(
-        func=mdp.reset_joints_by_offset,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=LEG_JOINT_NAMES),
-            "position_range": (0.0, 0.0),
-            "velocity_range": (0.0, 0.0),
-        },
-    )
-
-    reset_arm_joints = EventTerm(
-        func=mdp.reset_joints_by_offset,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=ARM_JOINT_NAMES),
-            "position_range": (0.0, 0.0),
-            "velocity_range": (0.0, 0.0),
-        },
-    )
-
-    reset_wheel_joints = EventTerm(
-        func=mdp.reset_joints_by_offset,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=WHEEL_JOINT_NAMES),
-            "position_range": (0.0, 0.0),
-            "velocity_range": (0.0, 0.0),
-        },
-    )
-
-    randomize_leg_wheel_actuator_gains = EventTerm(
-        func=mdp.randomize_actuator_gains,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=LEG_JOINT_NAMES + WHEEL_JOINT_NAMES),
-            "stiffness_distribution_params": (0.5, 2.0),
-            "damping_distribution_params": (0.5, 2.0),
-            "operation": "scale",
-            "distribution": "uniform",
-        },
-    )
+    # randomize_apply_external_force_torque = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=""),
+    #         "force_range": (-10.0, 10.0),
+    #         "torque_range": (-10.0, 10.0),
+    #     },
+    # )
 
     randomize_reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            "velocity_range": {
+            "asset_cfg": SceneEntityCfg("robot"),
+            "pose_range": {
                 "x": (-0.5, 0.5),
                 "y": (-0.5, 0.5),
-                "z": (-0.5, 0.5),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-0.5, 0.5),
+                "z": (-0.0, 0.0),
+                "roll": (-0.0, 0.0),
+                "pitch": (-0.0, 0.0),
+                "yaw": (-3.14, 3.14),
             },
+            "velocity_range": {},
         },
     )
 
-    # interval
-    randomize_push_robot = EventTerm(
-        func=mdp.push_by_setting_velocity,
-        mode="interval",
-        interval_range_s=(10.0, 15.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+    randomize_reset_leg_joints = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=LEG_JOINT_NAMES),
+            "position_range": (-0.0, 0.0),
+            "velocity_range": (-0.0, 0.0),
+        },
     )
+
+    randomize_reset_arm_joints = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=ARM_JOINT_NAMES),
+            "position_range": (-0.0, 0.0),
+            "velocity_range": (-0.0, 0.0),
+        },
+    )
+
+    randomize_reset_wheel_joints = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=WHEEL_JOINT_NAMES),
+            "position_range": (-0.0, 0.0),
+            "velocity_range": (-0.0, 0.0),
+        },
+    )
+
+    # randomize_leg_wheel_actuator_gains = EventTerm(
+    #     func=mdp.randomize_actuator_gains,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", joint_names=LEG_JOINT_NAMES + WHEEL_JOINT_NAMES),
+    #         "stiffness_distribution_params": (0.5, 2.0),
+    #         "damping_distribution_params": (0.5, 2.0),
+    #         "operation": "scale",
+    #         "distribution": "uniform",
+    #     },
+    # )
+
+
+    # interval
+    # randomize_push_robot = EventTerm(
+    #     func=mdp.push_by_setting_velocity,
+    #     mode="interval",
+    #     interval_range_s=(10.0, 15.0),
+    #     params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+    # )
 
 
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
 
+    # 线速度跟踪奖励项
+    track_lin_vel_xy_exp = RewTerm(
+        func=mdp.track_lin_vel_xy_exp,
+        weight=0.0,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
+    )
+    # 角速度跟踪奖励项
+    track_ang_vel_z_exp = RewTerm(
+        func=mdp.track_ang_vel_z_exp,
+        weight=0.0,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
+    )
+    # 惩罚机体高度与目标高度之间的偏差
+    base_height_l2 = RewTerm(
+        func=mdp.base_height_l2,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "sensor_cfg": SceneEntityCfg("height_scanner_base"),
+            "target_height": 0.45,
+        },
+    )
+    # 惩罚机体沿竖直方向的线速度，减少上下跳动和振荡。
+    lin_vel_z_l2 = RewTerm(
+        func=mdp.lin_vel_z_l2,
+        weight=0.0,
+    )
+    # 惩罚机体绕横滚轴和俯仰轴的角速度，提高姿态稳定性。
+    ang_vel_xy_l2 = RewTerm(
+        func=mdp.ang_vel_xy_l2,
+        weight=0.0,
+    )
+    # 腿部关节力矩正则项。
+    joint_torques_l2 = RewTerm(
+        func=mdp.joint_torques_l2,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=LEG_JOINT_NAMES,
+                preserve_order=True,
+            )
+        },
+    )
+    # 腿部关节速度正则项。
+    joint_vel_l2 = RewTerm(
+        func=mdp.joint_vel_l2,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=LEG_JOINT_NAMES,
+                preserve_order=True,
+            )
+        },
+    )
+    # 腿部关节加速度正则项。
+    joint_acc_l2 = RewTerm(
+        func=mdp.joint_acc_l2,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=LEG_JOINT_NAMES,
+                preserve_order=True,
+            )
+        },
+    )
+    # 轮子关节力矩正则项。
+    joint_torques_wheel_l2 = RewTerm(
+        func=mdp.joint_torques_l2,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=WHEEL_JOINT_NAMES,
+                preserve_order=True,
+            )
+        },
+    )
+    # 轮子关节速度正则项。
+    joint_vel_wheel_l2 = RewTerm(
+        func=mdp.joint_vel_l2,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=WHEEL_JOINT_NAMES,
+                preserve_order=True,
+            )
+        },
+    )
+    # 轮子关节加速度正则项。
+    joint_acc_wheel_l2 = RewTerm(
+        func=mdp.joint_acc_l2,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=WHEEL_JOINT_NAMES,
+                preserve_order=True,
+            )
+        },
+    )
+    # 惩罚相邻控制周期之间的动作变化，提升控制平滑性。
+    action_rate_l2 = RewTerm(
+        func=mdp.action_rate_l2,
+        weight=0.0,
+    )
+    
+
     # General
+    # 根据非超时终止状态施加奖励或惩罚，通常用于惩罚机器人提前失败。
     is_terminated = RewTerm(func=mdp.is_terminated, weight=0.0)
 
     # Root penalties
+    # 惩罚机体沿竖直方向的线速度，减少上下跳动和振荡。
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=0.0)
+    # 惩罚机体绕横滚轴和俯仰轴的角速度，提高姿态稳定性。
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=0.0)
+    # 惩罚机体相对水平姿态的倾斜，促使机身保持水平。
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
+    # 惩罚机体高度与目标高度之间的偏差。
     base_height_l2 = RewTerm(
         func=mdp.base_height_l2,
         weight=0.0,
@@ -508,6 +634,7 @@ class RewardsCfg:
             "target_height": 0.0,
         },
     )
+    # 惩罚指定刚体的线加速度，抑制机身剧烈冲击和抖动。
     body_lin_acc_l2 = RewTerm(
         func=mdp.body_lin_acc_l2,
         weight=0.0,
@@ -515,31 +642,38 @@ class RewardsCfg:
     )
 
     # Joint penalties
+    # 惩罚指定关节的驱动力矩，降低执行器负载和能耗。
     joint_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
     )
+    # 惩罚指定关节的转动速度，抑制过快的关节运动。
     joint_vel_l2 = RewTerm(
         func=mdp.joint_vel_l2, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
     )
+    # 惩罚指定关节的加速度，减少高频运动和机械冲击。
     joint_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
     )
+    # 单独惩罚轮子关节的驱动力矩，约束轮毂电机负载。
     joint_torques_wheel_l2 = RewTerm(
         func=mdp.joint_torques_l2,
         weight=0.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=WHEEL_JOINT_NAMES)},
     )
+    # 单独惩罚轮子关节的转速，避免不必要的高速空转。
     joint_vel_wheel_l2 = RewTerm(
         func=mdp.joint_vel_l2,
         weight=0.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=WHEEL_JOINT_NAMES)},
     )
+    # 单独惩罚轮子关节的角加速度，使轮速变化更加平滑。
     joint_acc_wheel_l2 = RewTerm(
         func=mdp.joint_acc_l2,
         weight=0.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=WHEEL_JOINT_NAMES)},
     )
 
+    # 动态创建指定关节相对默认姿态的 L1 偏差奖励项。
     def create_joint_deviation_l1_rewterm(self, attr_name, weight, joint_names_pattern):
         rew_term = RewTerm(
             func=mdp.joint_deviation_l1,
@@ -548,14 +682,17 @@ class RewardsCfg:
         )
         setattr(self, attr_name, rew_term)
 
+    # 惩罚关节位置超出软位置限位的程度，降低触碰机械限位的风险。
     joint_pos_limits = RewTerm(
         func=mdp.joint_pos_limits, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
     )
+    # 惩罚关节速度超过软速度限位的程度。
     joint_vel_limits = RewTerm(
         func=mdp.joint_vel_limits,
         weight=0.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*"), "soft_ratio": 1.0},
     )
+    # 惩罚关节力矩与关节速度乘积的绝对值，降低机械功率消耗。
     joint_power = RewTerm(
         func=mdp.joint_power,
         weight=0.0,
@@ -564,6 +701,7 @@ class RewardsCfg:
         },
     )
 
+    # 速度命令接近零时惩罚关节偏离默认姿态，促使机器人稳定静止。
     stand_still = RewTerm(
         func=mdp.stand_still,
         weight=0.0,
@@ -574,6 +712,7 @@ class RewardsCfg:
         },
     )
 
+    # 惩罚关节偏离默认姿态，并在静止状态下提高惩罚强度。
     joint_pos_penalty = RewTerm(
         func=mdp.joint_pos_penalty,
         weight=0.0,
@@ -586,6 +725,7 @@ class RewardsCfg:
         },
     )
 
+    # 运动时惩罚离地轮空转，静止时惩罚所有轮子转动。
     wheel_vel_penalty = RewTerm(
         func=mdp.wheel_vel_penalty,
         weight=0.0,
@@ -598,6 +738,7 @@ class RewardsCfg:
         },
     )
 
+    # 惩罚成对对称关节的位置差异，促进对称的腿部姿态。
     joint_mirror = RewTerm(
         func=mdp.joint_mirror,
         weight=0.0,
@@ -607,6 +748,7 @@ class RewardsCfg:
         },
     )
 
+    # 惩罚成对对称关节的动作幅值差异，促进对称控制输出。
     action_mirror = RewTerm(
         func=mdp.action_mirror,
         weight=0.0,
@@ -616,6 +758,7 @@ class RewardsCfg:
         },
     )
 
+    # 惩罚同一关节组内动作不一致，促进多条腿同步运动。
     action_sync = RewTerm(
         func=mdp.action_sync,
         weight=0.0,
@@ -630,16 +773,19 @@ class RewardsCfg:
     )
 
     # Action penalties
+    # 惩罚执行器实际力矩超过软力矩限位的程度。
     applied_torque_limits = RewTerm(
         func=mdp.applied_torque_limits,
         weight=0.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")},
     )
+    # 惩罚相邻控制周期之间的动作变化，提升控制平滑性。
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=0.0)
     # smoothness_1 = RewTerm(func=mdp.smoothness_1, weight=0.0)  # Same as action_rate_l2
     # smoothness_2 = RewTerm(func=mdp.smoothness_2, weight=0.0)  # Unvaliable now
 
     # Contact sensor
+    # 惩罚指定身体部位发生超过阈值的非期望接触。
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
         weight=0.0,
@@ -648,6 +794,7 @@ class RewardsCfg:
             "threshold": 1.0,
         },
     )
+    # 惩罚指定接触部位的接触力超过给定阈值。
     contact_forces = RewTerm(
         func=mdp.contact_forces,
         weight=0.0,
@@ -655,14 +802,17 @@ class RewardsCfg:
     )
 
     # Velocity-tracking rewards
+    # 奖励机体在水平面内跟踪目标线速度。
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_exp, weight=0.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
+    # 奖励机体跟踪绕竖直轴的目标角速度。
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_exp, weight=0.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
 
     # Others
+    # 运动命令存在时奖励合适的单腿支撑和腾空持续时间。
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
         weight=0.0,
@@ -673,12 +823,14 @@ class RewardsCfg:
         },
     )
 
+    # 度量各足腾空与接触时间的方差，通常用于惩罚步态时序不一致。
     feet_air_time_variance = RewTerm(
         func=mdp.feet_air_time_variance_penalty,
         weight=0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="")},
     )
 
+    # 根据指定足端配对奖励同步与交替接触时序，塑造目标步态。
     feet_gait = RewTerm(
         func=mdp.GaitReward,
         weight=0.0,
@@ -694,6 +846,7 @@ class RewardsCfg:
         },
     )
 
+    # 度量首次接触足数量与期望数量是否不一致，通常作为接触数量惩罚。
     feet_contact = RewTerm(
         func=mdp.feet_contact,
         weight=0.0,
@@ -704,6 +857,7 @@ class RewardsCfg:
         },
     )
 
+    # 无运动命令时奖励足端重新接触地面，帮助机器人保持稳定支撑。
     feet_contact_without_cmd = RewTerm(
         func=mdp.feet_contact_without_cmd,
         weight=0.0,
@@ -713,6 +867,7 @@ class RewardsCfg:
         },
     )
 
+    # 惩罚足端侧向碰撞竖直障碍物等绊倒事件。
     feet_stumble = RewTerm(
         func=mdp.feet_stumble,
         weight=0.0,
@@ -721,6 +876,7 @@ class RewardsCfg:
         },
     )
 
+    # 惩罚足端接触地面时的切向滑动速度。
     feet_slide = RewTerm(
         func=mdp.feet_slide,
         weight=0.0,
@@ -730,6 +886,7 @@ class RewardsCfg:
         },
     )
 
+    # 运动时惩罚足端世界坐标高度偏离目标摆动高度。
     feet_height = RewTerm(
         func=mdp.feet_height,
         weight=0.0,
@@ -741,6 +898,7 @@ class RewardsCfg:
         },
     )
 
+    # 运动时惩罚足端在机体坐标系中的高度偏离目标值。
     feet_height_body = RewTerm(
         func=mdp.feet_height_body,
         weight=0.0,
@@ -752,6 +910,7 @@ class RewardsCfg:
         },
     )
 
+    # 奖励足端横向间距接近期望站立宽度。
     feet_distance_y_exp = RewTerm(
         func=mdp.feet_distance_y_exp,
         weight=0.0,
@@ -773,6 +932,7 @@ class RewardsCfg:
     #     },
     # )
 
+    # 奖励机体保持竖直朝上的姿态，降低翻倒倾向。
     upward = RewTerm(func=mdp.upward, weight=0.0)
 
 
