@@ -223,6 +223,56 @@ def wheel_vel_penalty(
     return reward
 
 
+def wheel_contact_loss(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    grace_period: float = 0.02,
+) -> torch.Tensor:
+    """Penalize wheels that remain out of contact beyond a short grace period.
+
+    The contact sensor must be configured with ``track_air_time=True``. The grace
+    period rejects isolated contact-state jitter while still detecting sustained
+    wheel lift-off.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    air_time = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]
+    return torch.sum(air_time > grace_period, dim=1).float()
+
+
+def wheel_spin_without_cmd(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    linear_command_threshold: float,
+    angular_command_threshold: float,
+    linear_velocity_scale: float,
+    angular_velocity_scale: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize normalized wheel speed when both command and base motion are near zero.
+
+    Linear and angular command thresholds are kept separate to avoid mixing units.
+    A smooth base-stillness gate prevents normal wheel rotation during coasting or
+    braking from being penalized as strongly as stationary wheel spin.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    command_is_zero = torch.logical_and(
+        torch.linalg.vector_norm(command[:, :2], dim=1) < linear_command_threshold,
+        torch.abs(command[:, 2]) < angular_command_threshold,
+    )
+
+    normalized_base_motion_l2 = torch.sum(
+        torch.square(asset.data.root_lin_vel_b[:, :2] / linear_velocity_scale), dim=1
+    )
+    normalized_base_motion_l2 += torch.square(asset.data.root_ang_vel_b[:, 2] / angular_velocity_scale)
+    stillness_gate = torch.exp(-normalized_base_motion_l2)
+
+    wheel_speed = asset.data.joint_vel[:, asset_cfg.joint_ids]
+    wheel_speed_limit = asset.data.soft_joint_vel_limits[:, asset_cfg.joint_ids].clamp_min(1.0e-6)
+    normalized_wheel_speed_l2 = torch.sum(torch.square(wheel_speed / wheel_speed_limit), dim=1)
+    return normalized_wheel_speed_l2 * command_is_zero.float() * stillness_gate
+
+
 class GaitReward(ManagerTermBase):
     """Gait enforcing reward term for quadrupeds.
 
@@ -867,9 +917,7 @@ def undesired_contacts(env: ManagerBasedRLEnv, threshold: float, sensor_cfg: Sce
     net_contact_forces = contact_sensor.data.net_forces_w_history
     is_contact = torch.max(torch.norm(net_contact_forces[:, :, sensor_cfg.body_ids], dim=-1), dim=1)[0] > threshold
     # sum over contacts for each environment
-    reward = torch.sum(is_contact, dim=1).float()
-    reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
-    return reward
+    return torch.sum(is_contact, dim=1).float()
 
 
 def flat_orientation_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
