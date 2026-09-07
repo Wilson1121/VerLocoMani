@@ -19,10 +19,9 @@ class UnitreeGo2WArmFlatEnvCfg(UnitreeGo2WArmRoughEnvCfg):
         self.scene.terrain.terrain_generator = None
         # no height scan
         self.scene.height_scanner = None
+        self.scene.height_scanner_base = None
         self.observations.policy.height_scan = None
         self.observations.critic.height_scan = None
-        # no terrain curriculum
-        self.curriculum.terrain_levels = None
 
         # If the weight of rewards is 0, set rewards to None
         if self.__class__.__name__ == "UnitreeGo2WArmFlatEnvCfg":

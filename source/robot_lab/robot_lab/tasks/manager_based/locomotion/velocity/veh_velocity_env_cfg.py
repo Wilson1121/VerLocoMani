@@ -132,9 +132,9 @@ class CommandsCfg:
     base_velocity = mdp.UniformThresholdVelocityCommandCfg(
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
-        rel_standing_envs=0.02,
-        rel_heading_envs=1.0,
-        heading_command=True,
+        rel_standing_envs=0.1,  # 略微增加静止站立比例
+        rel_heading_envs=0.0,   # 暂不设计航向
+        heading_command=False,
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp.UniformThresholdVelocityCommandCfg.Ranges(
@@ -150,7 +150,7 @@ class CommandsCfg:
         resampling_time_range=(1.0e6, 1.0e6),
         trajectory_time=(8.0, 12.0),
         hold_time=(1.0, 2.0),
-        fixed_default=False,
+        fixed_default=True,
         init_range=0.9,
         debug_vis=False,
         joint_names=ARM_JOINT_NAMES,
@@ -715,21 +715,43 @@ class RewardsCfg:
 
 @configclass
 class TerminationsCfg:
-    """Termination terms for the MDP."""
+    """Termination terms for the Go2WArm rolling task."""
 
-    # MDP terminations
-    time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # command_resample
-    terrain_out_of_bounds = DoneTerm(
-        func=mdp.terrain_out_of_bounds,
-        params={"asset_cfg": SceneEntityCfg("robot"), "distance_buffer": 3.0},
+    # 达到最大 episode 时长，属于正常时间截断而不是控制失败。
+    time_out = DoneTerm(
+        func=mdp.time_out,
         time_out=True,
     )
 
-    # Contact sensor
+    # 机器人驶出有限地形边界时截断；对于无限平面地形，该项始终不触发。
+    terrain_out_of_bounds = DoneTerm(
+        func=mdp.terrain_out_of_bounds,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "distance_buffer": 3.0,
+        },
+        time_out=True,
+    )
+
+    # 机身倾角过大时提前终止，避免继续采集明显失稳或翻倒后的状态。
+    bad_orientation = DoneTerm(
+        func=mdp.bad_orientation,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "limit_angle": 0.8,
+        },
+    )
+
+    # base 或 hip 发生地面接触时终止；其他非轮体接触由奖励项进行软约束。
     illegal_contact = DoneTerm(
         func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=""), "threshold": 1.0},
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=[r"base", r".*_hip"],
+            ),
+            "threshold": 1.0,
+        },
     )
 
 
@@ -737,23 +759,23 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
+    # terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
 
-    command_levels_lin_vel = CurrTerm(
-        func=mdp.command_levels_lin_vel,
-        params={
-            "reward_term_name": "track_lin_vel_xy_exp",
-            "range_multiplier": (0.1, 1.0),
-        },
-    )
+    # command_levels_lin_vel = CurrTerm(
+    #     func=mdp.command_levels_lin_vel,
+    #     params={
+    #         "reward_term_name": "track_lin_vel_xy_exp",
+    #         "range_multiplier": (0.1, 1.0),
+    #     },
+    # )
 
-    command_levels_ang_vel = CurrTerm(
-        func=mdp.command_levels_ang_vel,
-        params={
-            "reward_term_name": "track_ang_vel_z_exp",
-            "range_multiplier": (0.1, 1.0),
-        },
-    )
+    # command_levels_ang_vel = CurrTerm(
+    #     func=mdp.command_levels_ang_vel,
+    #     params={
+    #         "reward_term_name": "track_ang_vel_z_exp",
+    #         "range_multiplier": (0.1, 1.0),
+    #     },
+    # )
 
 
 ##
