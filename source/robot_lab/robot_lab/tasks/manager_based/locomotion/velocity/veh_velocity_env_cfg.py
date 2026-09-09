@@ -51,6 +51,7 @@ LEG_JOINT_NAMES = [
 ]
 ARM_JOINT_NAMES = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
 WHEEL_JOINT_NAMES = ["FL_foot_joint", "FR_foot_joint", "RL_foot_joint", "RR_foot_joint"]
+WHEEL_BODY_NAMES = ["FL_foot", "FR_foot", "RL_foot", "RR_foot"]
 POSITION_OBS_JOINT_NAMES = LEG_JOINT_NAMES + ARM_JOINT_NAMES
 VELOCITY_OBS_JOINT_NAMES = POSITION_OBS_JOINT_NAMES + WHEEL_JOINT_NAMES
 
@@ -573,6 +574,18 @@ class RewardsCfg:
             )
         },
     )
+    # 额外惩罚髋关节侧向运动速度，抑制接地行驶时的腿部横摆。
+    hip_joint_vel_l2 = RewTerm(
+        func=mdp.joint_vel_l2,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=r".*_hip_joint",
+                preserve_order=True,
+            )
+        },
+    )
     # 腿部关节加速度正则项。
     joint_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
@@ -593,6 +606,18 @@ class RewardsCfg:
             "asset_cfg": SceneEntityCfg(
                 "robot",
                 joint_names=LEG_JOINT_NAMES,
+                preserve_order=True,
+            )
+        },
+    )
+    # 额外惩罚髋关节偏离默认角度，抑制持续性的腿部侧向偏移。
+    hip_joint_deviation_l1 = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=r".*_hip_joint",
                 preserve_order=True,
             )
         },
@@ -658,6 +683,65 @@ class RewardsCfg:
                 preserve_order=True,
             ),
             "soft_ratio": 1.0,
+        },
+    )
+    # 惩罚同侧前后轮的速度差，减少轮间拖拽并保持差速底盘运动一致性。
+    wheel_same_side_sync_l2 = RewTerm(
+        func=mdp.wheel_same_side_sync_l2,
+        weight=0.0,
+        params={
+            "velocity_scale": 15.0,
+            "left_wheel_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=["FL_foot_joint", "RL_foot_joint"],
+                preserve_order=True,
+            ),
+            "right_wheel_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=["FR_foot_joint", "RR_foot_joint"],
+                preserve_order=True,
+            ),
+        },
+    )
+    # 奖励四轮速度满足差速运动学，并跟踪底盘前向速度和偏航角速度指令。
+    wheel_diff_drive_tracking_exp = RewTerm(
+        func=mdp.wheel_diff_drive_tracking_exp,
+        weight=0.0,
+        params={
+            "command_name": "base_velocity",
+            "wheel_radius": 0.086,
+            "track_width": 0.380,
+            "linear_std": 0.5,
+            "angular_std": 0.5,
+            "left_wheel_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=["FL_foot_joint", "RL_foot_joint"],
+                preserve_order=True,
+            ),
+            "right_wheel_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=["FR_foot_joint", "RR_foot_joint"],
+                preserve_order=True,
+            ),
+        },
+    )
+    # 惩罚四个轮子在机体水平面内偏离默认轮式构型，防止策略通过挪动轮子辅助转向。
+    wheel_stance_xy_l2 = RewTerm(
+        func=mdp.wheel_stance_xy_l2,
+        weight=0.0,
+        params={
+            "position_scale": 0.05,
+            "target_positions": [
+                (0.186, 0.142),
+                (0.186, -0.142),
+                (-0.200, 0.142),
+                (-0.200, -0.142),
+            ],
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=WHEEL_BODY_NAMES,
+                preserve_order=True,
+            ),
         },
     )
     # 惩罚没有与地面保持接触的轮子数量。

@@ -239,6 +239,125 @@ def wheel_contact_loss(
     return torch.sum(air_time > grace_period, dim=1).float()
 
 
+def _get_left_right_wheel_velocities(
+    env: ManagerBasedRLEnv,
+    left_wheel_cfg: SceneEntityCfg,
+    right_wheel_cfg: SceneEntityCfg,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return ordered front/rear wheel velocities for the left and right sides."""
+    if left_wheel_cfg.name != right_wheel_cfg.name:
+        raise ValueError("Left and right wheel configurations must reference the same articulation.")
+
+    asset: Articulation = env.scene[left_wheel_cfg.name]
+    left_wheel_vel = asset.data.joint_vel[:, left_wheel_cfg.joint_ids]
+    right_wheel_vel = asset.data.joint_vel[:, right_wheel_cfg.joint_ids]
+    if left_wheel_vel.shape[1] != 2 or right_wheel_vel.shape[1] != 2:
+        raise ValueError(
+            "Wheel differential-drive rewards require exactly two ordered joints "
+            "(front, rear) on each side."
+        )
+    return left_wheel_vel, right_wheel_vel
+
+
+def wheel_same_side_sync_l2(
+    env: ManagerBasedRLEnv,
+    velocity_scale: float,
+    left_wheel_cfg: SceneEntityCfg,
+    right_wheel_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Penalize front/rear wheel-speed mismatch on each side using normalized L2 errors."""
+    if velocity_scale <= 0.0:
+        raise ValueError(f"Expected a positive wheel velocity scale, received {velocity_scale}.")
+
+    left_wheel_vel, right_wheel_vel = _get_left_right_wheel_velocities(
+        env, left_wheel_cfg, right_wheel_cfg
+    )
+    left_error = (left_wheel_vel[:, 0] - left_wheel_vel[:, 1]) / velocity_scale
+    right_error = (right_wheel_vel[:, 0] - right_wheel_vel[:, 1]) / velocity_scale
+    return torch.square(left_error) + torch.square(right_error)
+
+
+def wheel_diff_drive_tracking_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    wheel_radius: float,
+    track_width: float,
+    linear_std: float,
+    angular_std: float,
+    left_wheel_cfg: SceneEntityCfg,
+    right_wheel_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Reward consistency between the commanded planar twist and differential wheel kinematics."""
+    if wheel_radius <= 0.0:
+        raise ValueError(f"Expected a positive wheel radius, received {wheel_radius}.")
+    if track_width <= 0.0:
+        raise ValueError(f"Expected a positive wheel track width, received {track_width}.")
+    if linear_std <= 0.0 or angular_std <= 0.0:
+        raise ValueError(
+            f"Expected positive linear/angular standard deviations, received {linear_std} and {angular_std}."
+        )
+
+    left_wheel_vel, right_wheel_vel = _get_left_right_wheel_velocities(
+        env, left_wheel_cfg, right_wheel_cfg
+    )
+    mean_left_wheel_vel = torch.mean(left_wheel_vel, dim=1)
+    mean_right_wheel_vel = torch.mean(right_wheel_vel, dim=1)
+
+    wheel_lin_vel = 0.5 * wheel_radius * (mean_left_wheel_vel + mean_right_wheel_vel)
+    wheel_ang_vel = wheel_radius * (mean_right_wheel_vel - mean_left_wheel_vel) / track_width
+    command = env.command_manager.get_command(command_name)
+
+    normalized_error = torch.square((wheel_lin_vel - command[:, 0]) / linear_std)
+    normalized_error += torch.square((wheel_ang_vel - command[:, 2]) / angular_std)
+    return torch.exp(-normalized_error)
+
+
+def wheel_stance_xy_l2(
+    env: ManagerBasedRLEnv,
+    position_scale: float,
+    target_positions: Sequence[Sequence[float]],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize wheel-link position errors in the base-frame horizontal plane.
+
+    The selected bodies and target positions must use the same explicit order.
+    The vertical coordinate is intentionally ignored so the legs can still
+    regulate chassis height without changing the nominal wheel footprint.
+    """
+    if position_scale <= 0.0:
+        raise ValueError(f"Expected a positive wheel position scale, received {position_scale}.")
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    if isinstance(asset_cfg.body_ids, slice):
+        raise ValueError("Wheel-stance reward requires four explicitly ordered wheel body IDs.")
+    if len(asset_cfg.body_ids) != 4:
+        raise ValueError(
+            f"Wheel-stance reward requires exactly four wheel bodies, received {len(asset_cfg.body_ids)}."
+        )
+
+    target_positions_tensor = torch.as_tensor(
+        target_positions,
+        device=asset.device,
+        dtype=asset.data.body_link_pos_w.dtype,
+    )
+    if target_positions_tensor.shape != (4, 2):
+        raise ValueError(
+            "Expected four ordered wheel target positions with shape (4, 2), "
+            f"received {tuple(target_positions_tensor.shape)}."
+        )
+
+    wheel_pos_rel_w = (
+        asset.data.body_link_pos_w[:, asset_cfg.body_ids, :] - asset.data.root_link_pos_w.unsqueeze(1)
+    )
+    root_quat_w = asset.data.root_link_quat_w.unsqueeze(1).expand(-1, 4, -1)
+    wheel_pos_b = quat_apply_inverse(
+        root_quat_w.reshape(-1, 4), wheel_pos_rel_w.reshape(-1, 3)
+    ).reshape(env.num_envs, 4, 3)
+
+    normalized_error = (wheel_pos_b[:, :, :2] - target_positions_tensor.unsqueeze(0)) / position_scale
+    return torch.sum(torch.square(normalized_error), dim=(1, 2))
+
+
 def wheel_spin_without_cmd(
     env: ManagerBasedRLEnv,
     command_name: str,

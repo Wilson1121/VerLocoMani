@@ -1000,10 +1000,9 @@ Stephen Brawner (brawner@gmail.com)
       </material>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0 0" xyz="0 0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 0.048 0" />
       <geometry>
-        <mesh filename="../meshes_mjc/left_wheel.stl" />
-        <!-- <cylinder length="0.045" radius="0.086" /> -->
+        <cylinder length="0.045" radius="0.086" />
       </geometry>
     </collision>
   </link>
@@ -1304,10 +1303,9 @@ Stephen Brawner (brawner@gmail.com)
       </material>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0 0" xyz="0 -0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 -0.048 0" />
       <geometry>
-        <mesh filename="../meshes_mjc/right_wheel.stl" />
-        <!-- <cylinder length="0.045" radius="0.086" /> -->
+        <cylinder length="0.045" radius="0.086" />
       </geometry>
     </collision>
   </link>
@@ -1608,10 +1606,9 @@ Stephen Brawner (brawner@gmail.com)
       </material>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0 0" xyz="0 0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 0.048 0" />
       <geometry>
-        <mesh filename="../meshes_mjc/left_wheel.stl" />
-        <!-- <cylinder length="0.045" radius="0.086" /> -->
+        <cylinder length="0.045" radius="0.086" />
       </geometry>
     </collision>
   </link>
@@ -1911,10 +1908,9 @@ Stephen Brawner (brawner@gmail.com)
       </material>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0 0" xyz="0 -0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 -0.048 0" />
       <geometry>
-        <mesh filename="../meshes_mjc/right_wheel.stl" />
-        <!-- <cylinder length="0.045" radius="0.086" /> -->
+        <cylinder length="0.045" radius="0.086" />
       </geometry>
     </collision>
   </link>
