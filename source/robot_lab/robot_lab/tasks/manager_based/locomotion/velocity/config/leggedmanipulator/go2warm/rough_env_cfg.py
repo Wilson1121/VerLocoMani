@@ -186,10 +186,10 @@ class UnitreeGo2WArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.rel_standing_envs = 0.1
         self.commands.base_velocity.debug_vis = False
 
-        # First-stage chassis training keeps the independently PD-controlled arm
-        # at its tucked default pose. Dynamic arm trajectories can be enabled in
-        # a later fine-tuning stage.
+        # Keep the arm fixed by default. Staged training directly overrides
+        # these final command fields through Hydra after __post_init__ runs.
         self.commands.arm_joint_trajectory.fixed_default = True
+        self.commands.arm_joint_trajectory.init_range = 0.0
         self.commands.arm_joint_trajectory.debug_vis = False
 
         ###### Zero-weight reward cleanup #######
