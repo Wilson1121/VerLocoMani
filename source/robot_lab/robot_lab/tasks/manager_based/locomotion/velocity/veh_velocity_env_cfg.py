@@ -744,6 +744,19 @@ class RewardsCfg:
             ),
         },
     )
+    # 惩罚轮子相对机体的水平运动，抑制接地行驶时通过挪腿辅助转向。
+    wheel_relative_xy_vel_l2 = RewTerm(
+        func=mdp.wheel_relative_xy_vel_l2,
+        weight=0.0,
+        params={
+            "velocity_scale": 0.1,
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=WHEEL_BODY_NAMES,
+                preserve_order=True,
+            ),
+        },
+    )
     # 惩罚没有与地面保持接触的轮子数量。
     wheel_contact_loss = RewTerm(
         func=mdp.wheel_contact_loss,

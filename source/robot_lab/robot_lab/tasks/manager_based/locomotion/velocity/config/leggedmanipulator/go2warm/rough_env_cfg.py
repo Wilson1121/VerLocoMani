@@ -68,6 +68,7 @@ class UnitreeGo2WArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # rolling commands and leaves headroom for differential steering.
         self.actions.joint_pos.scale = {r".*_hip_joint": 0.125, r"^(?!.*_hip_joint).*": 0.25}
         self.actions.joint_pos.clip = {r".*": (-100.0, 100.0)}
+        self.actions.joint_pos.low_pass_cutoff_hz = 4.0
         self.actions.joint_vel.scale = 15.0
         self.actions.joint_vel.clip = {r".*": (-100.0, 100.0)}
 
@@ -106,7 +107,7 @@ class UnitreeGo2WArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_torques_l2.params["asset_cfg"].joint_names = self.leg_joint_names
         self.rewards.joint_vel_l2.weight = -0.005
         self.rewards.joint_vel_l2.params["asset_cfg"].joint_names = self.leg_joint_names
-        self.rewards.hip_joint_vel_l2.weight = -0.10
+        self.rewards.hip_joint_vel_l2.weight = -0.20
         self.rewards.hip_joint_vel_l2.params["asset_cfg"].joint_names = r".*_hip_joint"
         self.rewards.joint_acc_l2.weight = -2.5e-7
         self.rewards.joint_acc_l2.params["asset_cfg"].joint_names = self.leg_joint_names
@@ -132,14 +133,17 @@ class UnitreeGo2WArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.wheel_same_side_sync_l2.weight = -0.5
         self.rewards.wheel_same_side_sync_l2.params["velocity_scale"] = 15.0
 
-        self.rewards.wheel_diff_drive_tracking_exp.weight = 1.0
+        self.rewards.wheel_diff_drive_tracking_exp.weight = 0.0
         self.rewards.wheel_diff_drive_tracking_exp.params["wheel_radius"] = 0.086
         self.rewards.wheel_diff_drive_tracking_exp.params["track_width"] = 0.380
         self.rewards.wheel_diff_drive_tracking_exp.params["linear_std"] = 0.5
         self.rewards.wheel_diff_drive_tracking_exp.params["angular_std"] = 0.5
 
-        self.rewards.wheel_stance_xy_l2.weight = -0.25
+        self.rewards.wheel_stance_xy_l2.weight = -0.40
         self.rewards.wheel_stance_xy_l2.params["position_scale"] = 0.05
+
+        self.rewards.wheel_relative_xy_vel_l2.weight = 0.0
+        self.rewards.wheel_relative_xy_vel_l2.params["velocity_scale"] = 0.1
 
         self.rewards.wheel_contact_loss.weight = -3.0
         self.rewards.wheel_contact_loss.params["sensor_cfg"].body_names = self.foot_link_name

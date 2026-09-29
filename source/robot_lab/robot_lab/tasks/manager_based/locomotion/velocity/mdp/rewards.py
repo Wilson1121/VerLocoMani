@@ -358,6 +358,50 @@ def wheel_stance_xy_l2(
     return torch.sum(torch.square(normalized_error), dim=(1, 2))
 
 
+def wheel_relative_xy_vel_l2(
+    env: ManagerBasedRLEnv,
+    velocity_scale: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize horizontal wheel-link motion relative to a rigidly moving base.
+
+    The rigid-body velocity induced by base translation and rotation is removed
+    before transforming the residual velocity into the base frame. Wheel rolling
+    and normal chassis motion are therefore not treated as leg repositioning.
+    """
+    if velocity_scale <= 0.0:
+        raise ValueError(f"Expected a positive wheel relative-velocity scale, received {velocity_scale}.")
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    if isinstance(asset_cfg.body_ids, slice):
+        raise ValueError("Wheel relative-velocity reward requires explicitly resolved wheel body IDs.")
+    if len(asset_cfg.body_ids) != 4:
+        raise ValueError(
+            f"Wheel relative-velocity reward requires exactly four wheel bodies, received {len(asset_cfg.body_ids)}."
+        )
+
+    wheel_pos_rel_w = (
+        asset.data.body_link_pos_w[:, asset_cfg.body_ids, :] - asset.data.root_link_pos_w.unsqueeze(1)
+    )
+    root_ang_vel_w = asset.data.root_link_ang_vel_w.unsqueeze(1).expand_as(wheel_pos_rel_w)
+    rigid_wheel_vel_w = asset.data.root_link_lin_vel_w.unsqueeze(1) + torch.cross(
+        root_ang_vel_w,
+        wheel_pos_rel_w,
+        dim=-1,
+    )
+    wheel_relative_vel_w = asset.data.body_link_lin_vel_w[:, asset_cfg.body_ids, :] - rigid_wheel_vel_w
+
+    num_wheels = len(asset_cfg.body_ids)
+    root_quat_w = asset.data.root_link_quat_w.unsqueeze(1).expand(-1, num_wheels, -1)
+    wheel_relative_vel_b = quat_apply_inverse(
+        root_quat_w.reshape(-1, 4),
+        wheel_relative_vel_w.reshape(-1, 3),
+    ).reshape(env.num_envs, num_wheels, 3)
+
+    normalized_velocity = wheel_relative_vel_b[:, :, :2] / velocity_scale
+    return torch.sum(torch.square(normalized_velocity), dim=(1, 2))
+
+
 def wheel_spin_without_cmd(
     env: ManagerBasedRLEnv,
     command_name: str,
