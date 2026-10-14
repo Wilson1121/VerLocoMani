@@ -351,7 +351,7 @@ UNITREE_Go2WArm_CFG = ArticulationCfg(
             friction=0.01,
             # armature=0.01,    # 惯量
             min_delay=0,        # PD 控制的最小延迟，单位为仿真步数
-            max_delay=0,        # PD 控制的最大延迟，单位为仿真步数
+            max_delay=2,        # 0--2 physics steps (0--10 ms at dt=0.005 s)
         ),
         "leg_calf": DelayedPDActuatorCfg(
             joint_names_expr=[r".*_calf_joint"],
@@ -362,7 +362,7 @@ UNITREE_Go2WArm_CFG = ArticulationCfg(
             friction=0.01,
             # armature=0.01,
             min_delay=0,
-            max_delay=0,  
+            max_delay=2,
         ),
         "wheels": DelayedPDActuatorCfg(
             joint_names_expr=[".*_foot_joint"],
@@ -372,7 +372,7 @@ UNITREE_Go2WArm_CFG = ArticulationCfg(
             damping=0.5,
             friction=0.01,
             min_delay=0,
-            max_delay=0,
+            max_delay=2,
         ),
         "arm": DelayedPDActuatorCfg(
             joint_names_expr=[r"joint[1-6]"],
@@ -423,7 +423,7 @@ UNITREE_Go2WArm_CFG = ArticulationCfg(
             # friction=0.0,
             # armature=0.01,
             min_delay=0,
-            max_delay=0,
+            max_delay=2,
         ),
     },
 )

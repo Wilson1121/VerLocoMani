@@ -3,12 +3,17 @@
 
 import math
 
+from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
+import robot_lab.tasks.manager_based.locomotion.velocity.mdp as mdp
 from robot_lab.tasks.manager_based.locomotion.velocity.veh_velocity_env_cfg import (
     ARM_JOINT_NAMES,
+    EventCfg,
     LEG_JOINT_NAMES,
     LocomotionVelocityRoughEnvCfg,
+    WHEEL_BODY_NAMES,
     WHEEL_JOINT_NAMES,
 )
 
@@ -16,6 +21,104 @@ from robot_lab.tasks.manager_based.locomotion.velocity.veh_velocity_env_cfg impo
 # Pre-defined configs
 ##
 from robot_lab.assets.unitree import UNITREE_Go2WArm_CFG  # isort: skip
+
+
+@configclass
+class UnitreeGo2WArmEventCfg(EventCfg):
+    """Domain randomization for the Go2W chassis carrying a Piper arm."""
+
+    ###### Contact properties #######
+
+    randomize_wheel_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=WHEEL_BODY_NAMES),
+            "static_friction_range": (0.7, 1.1),
+            "dynamic_friction_range": (0.6, 1.0),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 64,
+            "make_consistent": True,
+        },
+    )
+
+    ###### Rigid-body properties #######
+
+    # The chassis, arm mount, and Piper base are merged into the root body by
+    # the URDF converter. This term covers fixed equipment and assembly error.
+    randomize_base_mass = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "mass_distribution_params": (-0.3, 0.5),
+            "operation": "add",
+            "distribution": "uniform",
+            "recompute_inertia": True,
+        },
+    )
+
+    randomize_base_com = EventTerm(
+        func=mdp.randomize_rigid_body_com,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "com_range": {
+                "x": (-0.015, 0.015),
+                "y": (-0.010, 0.010),
+                "z": (-0.005, 0.010),
+            },
+        },
+    )
+
+    randomize_arm_link_mass = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=[f"link{i}" for i in range(1, 7)]),
+            "mass_distribution_params": (0.95, 1.05),
+            "operation": "scale",
+            "distribution": "uniform",
+            "recompute_inertia": True,
+        },
+    )
+
+    ###### Actuator properties #######
+
+    randomize_leg_actuator_gains = EventTerm(
+        func=mdp.randomize_actuator_gains,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=LEG_JOINT_NAMES),
+            "stiffness_distribution_params": (0.95, 1.05),
+            "damping_distribution_params": (0.90, 1.10),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
+
+    randomize_wheel_actuator_gains = EventTerm(
+        func=mdp.randomize_actuator_gains,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=WHEEL_JOINT_NAMES),
+            "damping_distribution_params": (0.90, 1.10),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
+
+    randomize_arm_actuator_gains = EventTerm(
+        func=mdp.randomize_actuator_gains,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=ARM_JOINT_NAMES),
+            "stiffness_distribution_params": (0.95, 1.05),
+            "damping_distribution_params": (0.95, 1.05),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
 
 
 @configclass
@@ -29,6 +132,8 @@ class UnitreeGo2WArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     leg_joint_names = LEG_JOINT_NAMES
     arm_joint_names = ARM_JOINT_NAMES
     wheel_joint_names = WHEEL_JOINT_NAMES
+
+    events: UnitreeGo2WArmEventCfg = UnitreeGo2WArmEventCfg()
 
     def __post_init__(self):
         super().__post_init__()
