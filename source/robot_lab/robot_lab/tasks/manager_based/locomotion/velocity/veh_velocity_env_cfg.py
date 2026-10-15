@@ -167,6 +167,8 @@ class ActionsCfg:
         joint_names=LEG_JOINT_NAMES,
         arm_joint_names=ARM_JOINT_NAMES,
         arm_command_name="arm_joint_trajectory",
+        enable_gravity_compensation=True,
+        gravity_compensation_scale=1.0,
         scale={".*_hip_joint": 0.125, "^(?!.*_hip_joint).*": 0.25},
         use_default_offset=True,
         clip={".*": (-100.0, 100.0)},

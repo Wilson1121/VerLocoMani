@@ -10,6 +10,7 @@ from isaaclab.actuators import DCMotorCfg, ImplicitActuatorCfg, DelayedPDActuato
 from isaaclab.assets.articulation import ArticulationCfg
 
 from robot_lab.assets import ISAACLAB_ASSETS_DATA_DIR
+from robot_lab.assets.actuators import FeedForwardDelayedPDActuatorCfg
 
 ##
 # Configuration
@@ -374,7 +375,7 @@ UNITREE_Go2WArm_CFG = ArticulationCfg(
             min_delay=0,
             max_delay=2,
         ),
-        "arm": DelayedPDActuatorCfg(
+        "arm": FeedForwardDelayedPDActuatorCfg(
             joint_names_expr=[r"joint[1-6]"],
             # effort_limit=50,
             effort_limit={
