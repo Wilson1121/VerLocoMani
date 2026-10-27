@@ -277,6 +277,74 @@ def wheel_same_side_sync_l2(
     return torch.square(left_error) + torch.square(right_error)
 
 
+def wheel_diff_direction_alignment(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    angular_command_scale: float,
+    wheel_diff_velocity_scale: float,
+    angular_command_threshold: float,
+    contact_force_threshold: float,
+    min_contact_count: int,
+    left_wheel_cfg: SceneEntityCfg,
+    right_wheel_cfg: SceneEntityCfg,
+    sensor_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Reward agreement between the commanded yaw direction and the left-right wheel-speed difference.
+
+    This term intentionally constrains only the direction of differential
+    steering. The base yaw-rate tracking reward remains responsible for choosing
+    the required wheel-speed difference under varying friction and wheel slip.
+    A bounded hyperbolic tangent prevents the policy from increasing the reward
+    indefinitely by commanding excessive differential wheel speeds.
+    """
+    if angular_command_scale <= 0.0:
+        raise ValueError(f"Expected a positive angular command scale, received {angular_command_scale}.")
+    if wheel_diff_velocity_scale <= 0.0:
+        raise ValueError(
+            f"Expected a positive differential wheel velocity scale, received {wheel_diff_velocity_scale}."
+        )
+    if angular_command_threshold < 0.0:
+        raise ValueError(
+            f"Expected a non-negative angular command threshold, received {angular_command_threshold}."
+        )
+    if contact_force_threshold < 0.0:
+        raise ValueError(f"Expected a non-negative contact force threshold, received {contact_force_threshold}.")
+    if min_contact_count <= 0:
+        raise ValueError(f"Expected a positive minimum contact count, received {min_contact_count}.")
+
+    left_wheel_vel, right_wheel_vel = _get_left_right_wheel_velocities(
+        env, left_wheel_cfg, right_wheel_cfg
+    )
+    mean_left_wheel_vel = torch.mean(left_wheel_vel, dim=1)
+    mean_right_wheel_vel = torch.mean(right_wheel_vel, dim=1)
+    wheel_diff_velocity = mean_right_wheel_vel - mean_left_wheel_vel
+
+    yaw_command = env.command_manager.get_command(command_name)[:, 2]
+    normalized_alignment = (yaw_command / angular_command_scale) * (
+        wheel_diff_velocity / wheel_diff_velocity_scale
+    )
+    direction_reward = torch.tanh(normalized_alignment)
+
+    # Do not shape near-zero yaw commands; stationary wheel spin is handled by
+    # wheel_spin_without_cmd instead.
+    command_gate = torch.abs(yaw_command) > angular_command_threshold
+
+    # Use the maximum force over the sensor history to reject one-frame contact
+    # jitter. Contact gating prevents an airborne, freely spinning wheel from
+    # satisfying the differential-direction reward.
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :]
+    contacts = torch.amax(torch.linalg.vector_norm(contact_forces, dim=-1), dim=1) > contact_force_threshold
+    if min_contact_count > contacts.shape[1]:
+        raise ValueError(
+            f"Minimum contact count ({min_contact_count}) exceeds the number of selected bodies "
+            f"({contacts.shape[1]})."
+        )
+    contact_gate = torch.sum(contacts, dim=1) >= min_contact_count
+
+    return direction_reward * command_gate.float() * contact_gate.float()
+
+
 def wheel_diff_drive_tracking_exp(
     env: ManagerBasedRLEnv,
     command_name: str,

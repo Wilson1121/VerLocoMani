@@ -238,6 +238,13 @@ class UnitreeGo2WArmRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.wheel_same_side_sync_l2.weight = -0.5
         self.rewards.wheel_same_side_sync_l2.params["velocity_scale"] = 15.0
 
+        self.rewards.wheel_diff_direction_alignment.weight = 0.2
+        self.rewards.wheel_diff_direction_alignment.params["angular_command_scale"] = 1.0
+        self.rewards.wheel_diff_direction_alignment.params["wheel_diff_velocity_scale"] = 5.0
+        self.rewards.wheel_diff_direction_alignment.params["angular_command_threshold"] = 0.05
+        self.rewards.wheel_diff_direction_alignment.params["contact_force_threshold"] = 1.0
+        self.rewards.wheel_diff_direction_alignment.params["min_contact_count"] = 4
+
         self.rewards.wheel_diff_drive_tracking_exp.weight = 0.0
         self.rewards.wheel_diff_drive_tracking_exp.params["wheel_radius"] = 0.086
         self.rewards.wheel_diff_drive_tracking_exp.params["track_width"] = 0.380

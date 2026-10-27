@@ -705,6 +705,43 @@ class RewardsCfg:
             ),
         },
     )
+    # 奖励左右轮速差方向与偏航角速度指令一致；只注入差速方向先验，不固定有效轮距或差速幅值。
+    wheel_diff_direction_alignment = RewTerm(
+        func=mdp.wheel_diff_direction_alignment,
+        weight=0.0,
+        params={
+            # 从该命令项读取目标偏航角速度 command[:, 2]。
+            "command_name": "base_velocity",
+            # 偏航指令归一化尺度，单位 rad/s；Go2WArm 当前最大偏航指令为 1 rad/s。
+            "angular_command_scale": 1.0,
+            # 左右平均轮速差归一化尺度，单位 rad/s；用于控制 tanh 奖励的饱和速度。
+            "wheel_diff_velocity_scale": 5.0,
+            # 小于该绝对值的偏航指令不启用本项，避免近零指令附近产生无意义的差速激励。
+            "angular_command_threshold": 0.05,
+            # 根据短时接触力历史判断接地时使用的最小合力阈值，单位 N。
+            "contact_force_threshold": 1.0,
+            # 至少需要接地的选定轮数；设为 4 可防止利用腾空轮空转骗取奖励。
+            "min_contact_count": 4,
+            # 左侧轮关节必须按前、后顺序列出，并保持解析后的顺序不变。
+            "left_wheel_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=["FL_foot_joint", "RL_foot_joint"],
+                preserve_order=True,
+            ),
+            # 右侧轮关节必须按前、后顺序列出，并保持解析后的顺序不变。
+            "right_wheel_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=["FR_foot_joint", "RR_foot_joint"],
+                preserve_order=True,
+            ),
+            # 使用 contact_forces 传感器的四个轮体及其接触力历史进行接地门控。
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=WHEEL_BODY_NAMES,
+                preserve_order=True,
+            ),
+        },
+    )
     # 奖励四轮速度满足差速运动学，并跟踪底盘前向速度和偏航角速度指令。
     wheel_diff_drive_tracking_exp = RewTerm(
         func=mdp.wheel_diff_drive_tracking_exp,
